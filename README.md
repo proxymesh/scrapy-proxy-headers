@@ -6,7 +6,7 @@ Because Scrapy does not have a good way to pass custom headers to a proxy when y
 
 To use this extension, do the following:
 
-1. `pip install scrapy_proxy_headers`
+1. `pip install scrapy-proxy-headers`
 2. In your Scrapy `settings.py`, add the following code:
 
 ```python
