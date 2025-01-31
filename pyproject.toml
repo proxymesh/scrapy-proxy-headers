@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scrapy-proxy-headers"
+version = "0.1.2"
+authors = [
+  { name="ProxyMesh", email="support@proxymesh.com" },
+]
+description = "Add custom proxy headers to HTTPS requests in Scrapy"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+	"License :: OSI Approved :: BSD License",
+	"Intended Audience :: Developers",
+	"Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://github.com/proxymesh/scrapy-proxy-headers"
+Changelog = "https://github.com/proxymesh/scrapy-proxy-headers/commits/main/"

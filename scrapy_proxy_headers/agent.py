@@ -1,5 +1,3 @@
-# TODO: handle response headers
-
 from scrapy.core.downloader.handlers.http11 import TunnelingAgent, TunnelingTCP4ClientEndpoint, ScrapyAgent, HTTP11DownloadHandler
 from scrapy.core.downloader.webclient import _parse
 from scrapy.utils.python import to_bytes

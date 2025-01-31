@@ -1,3 +1,4 @@
 build/
+dist/
 scrapy_proxy_headers.egg-info/
 scrapy_proxy_headers/__pycache__/
