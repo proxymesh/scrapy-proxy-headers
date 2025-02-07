@@ -1,6 +1,8 @@
-from scrapy.core.downloader.handlers.http11 import TunnelingAgent, TunnelingTCP4ClientEndpoint, ScrapyAgent, HTTP11DownloadHandler
+import re
+from scrapy.core.downloader.handlers.http11 import TunnelingAgent, TunnelingTCP4ClientEndpoint, ScrapyAgent
 from scrapy.core.downloader.webclient import _parse
 from scrapy.utils.python import to_bytes
+from scrapy.http import Headers, Response
 
 def tunnel_request_data_with_headers(host: str, port: int, **proxy_headers) -> bytes:
     r"""
@@ -54,6 +56,19 @@ class TunnelingHeadersTCP4ClientEndpoint(TunnelingTCP4ClientEndpoint):
         protocol.dataReceived = self.processProxyResponse  # type: ignore[method-assign]
         self._protocol = protocol
         return protocol
+    
+    def processProxyResponse(self, data: bytes):
+        # data might have proxy headers, looks like
+        # b'HTTP/1.1 200 Connection established\r\nProxy-Header: VALUE\r\n\r\n'
+        response_headers = {}
+
+        for line in data.split(b'\r\n'):
+            if b':' in line:
+                key, val = line.split(b':', 1)
+                response_headers[key.strip()] = val.strip()
+        # save for endpoing & agent
+        self._proxy_response_headers = Headers(response_headers)
+        return super(TunnelingHeadersTCP4ClientEndpoint, self).processProxyResponse(data)
 
 class TunnelingHeadersAgent(TunnelingAgent):
     """An agent that uses a L{TunnelingTCP4ClientEndpoint} to make HTTPS
@@ -70,7 +85,8 @@ class TunnelingHeadersAgent(TunnelingAgent):
         self._proxy_headers = proxy_headers
 
     def _getEndpoint(self, uri):
-        return TunnelingHeadersTCP4ClientEndpoint(
+        # save endpoint for agent to get proxy_response_headers
+        self._endpoint = TunnelingHeadersTCP4ClientEndpoint(
             reactor=self._reactor,
             host=uri.host,
             port=uri.port,
@@ -80,31 +96,32 @@ class TunnelingHeadersAgent(TunnelingAgent):
             bindAddress=self._endpointFactory._bindAddress,
             **self._proxy_headers
         )
+        return self._endpoint
 
 class ScrapyProxyHeadersAgent(ScrapyAgent):
     _TunnelingAgent = TunnelingHeadersAgent
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._agent = None
     
     def _get_agent(self, request, timeout: float):
-        agent = super()._get_agent(request, timeout)
+        self._agent = super()._get_agent(request, timeout)
 
         proxy = request.meta.get("proxy")
         proxy_headers = request.meta.get('proxy_headers')
         if proxy and proxy_headers:
             scheme = _parse(request.url)[0]
             if scheme == b"https":
-                agent.set_proxy_headers(proxy_headers)
+                self._agent.set_proxy_headers(proxy_headers)
         
-        return agent
+        return self._agent
 
-class HTTP11ProxyDownloadHandler(HTTP11DownloadHandler):
-    def download_request(self, request, spider):
-        """Return a deferred for the HTTP download"""
-        agent = ScrapyProxyHeadersAgent(
-            contextFactory=self._contextFactory,
-            pool=self._pool,
-            maxsize=getattr(spider, "download_maxsize", self._default_maxsize),
-            warnsize=getattr(spider, "download_warnsize", self._default_warnsize),
-            fail_on_dataloss=self._fail_on_dataloss,
-            crawler=self._crawler,
-        )
-        return agent.download_request(request)
+    def _cb_bodydone(self, result, request, url: str):
+        r = super()._cb_bodydone(result, request, url)
+        if isinstance(r, Response):
+            if self._agent and hasattr(self._agent, '_endpoint'):
+                proxy_response_headers = getattr(self._agent._endpoint, '_proxy_response_headers')
+                if proxy_response_headers:
+                    r.headers.update(proxy_response_headers)
+        return r
