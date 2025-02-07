@@ -21,4 +21,4 @@ DOWNLOAD_HANDLERS = {
 request.meta["proxy_headers"] = {"X-ProxyMesh-Country": "US"}
 ```
 
-Currently this package does not yet support reading custom response headers from the proxy, but that feature is coming soon.
+4. Any response headers that might come from the proxy will be saved in `response.headers`
