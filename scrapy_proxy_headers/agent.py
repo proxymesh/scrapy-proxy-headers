@@ -124,4 +124,6 @@ class ScrapyProxyHeadersAgent(ScrapyAgent):
                 proxy_response_headers = getattr(self._agent._endpoint, '_proxy_response_headers', None)
                 if proxy_response_headers:
                     r.headers.update(proxy_response_headers)
+                    # save this for download handler
+                    r._proxy_response_headers = proxy_response_headers
         return r
