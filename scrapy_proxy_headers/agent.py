@@ -1,6 +1,5 @@
-import re
+from urllib.parse import urlparse
 from scrapy.core.downloader.handlers.http11 import TunnelingAgent, TunnelingTCP4ClientEndpoint, ScrapyAgent
-from scrapy.core.downloader.webclient import _parse
 from scrapy.utils.python import to_bytes
 from scrapy.http import Headers, Response
 
@@ -111,8 +110,8 @@ class ScrapyProxyHeadersAgent(ScrapyAgent):
         proxy = request.meta.get("proxy")
         proxy_headers = request.meta.get('proxy_headers')
         if proxy and proxy_headers:
-            scheme = _parse(request.url)[0]
-            if scheme == b"https":
+            scheme = urlparse(request.url).scheme
+            if scheme == "https":
                 self._agent.set_proxy_headers(proxy_headers)
         
         return self._agent
