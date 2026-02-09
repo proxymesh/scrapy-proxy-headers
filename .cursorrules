@@ -1,0 +1,22 @@
+# Cursor Rules for scrapy-proxy-headers
+
+## Git Configuration
+- Always commit as `cursor@proxymesh.com` with name `Cursor`
+- Run these commands if not already configured:
+  ```
+  git config user.email "cursor@proxymesh.com"
+  git config user.name "Cursor"
+  ```
+- NEVER push directly to main - always create a branch and PR
+- NEVER bypass branch protection rules
+- If a push is rejected due to branch protection, create a PR instead
+
+## Pull Requests
+- Do NOT add "Made with Cursor" or similar footers to PR descriptions
+- After creating a PR with `gh pr create`, immediately run `gh pr edit <number> --body "..."` to ensure no footer was appended
+- Keep PR descriptions concise and focused on the changes
+
+## Code Style
+- Follow existing code patterns in the repository
+- Use type hints for function signatures
+- Include docstrings for public functions and classes
