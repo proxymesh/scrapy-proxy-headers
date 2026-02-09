@@ -3,9 +3,29 @@
 Welcome to scrapy-proxy-headers's documentation!
 =================================================
 
+.. image:: https://badge.fury.io/py/scrapy-proxy-headers.svg
+   :target: https://badge.fury.io/py/scrapy-proxy-headers
+   :alt: PyPI version
+
+.. image:: https://readthedocs.org/projects/scrapy-proxy-headers/badge/?version=latest
+   :target: https://scrapy-proxy-headers.readthedocs.io/
+   :alt: Documentation Status
+
 The ``scrapy-proxy-headers`` package is designed for adding proxy headers to HTTPS requests in `Scrapy <https://scrapy.org/>`_.
 
+The Problem
+-----------
+
 In normal usage, custom headers put in ``request.headers`` cannot be read by a proxy when you make an HTTPS request, because the headers are encrypted and passed through the proxy tunnel, along with the rest of the request body. You can read more about this at `Proxy Server Requests over HTTPS <https://docs.proxymesh.com/article/145-proxy-server-requests-over-https>`_.
+
+::
+
+   ┌──────────┐     CONNECT      ┌───────┐     Encrypted     ┌────────────┐
+   │  Scrapy  │ ───────────────► │ Proxy │ ════════════════► │ Target URL │
+   └──────────┘  (unencrypted)   └───────┘    (tunnel)       └────────────┘
+                     │                              │
+              Proxy headers             request.headers
+              go HERE                   go here (encrypted)
 
 Because Scrapy does not have a good way to pass custom headers to a proxy when you make HTTPS requests, we at `ProxyMesh <https://proxymesh.com>`_ made this extension to support our customers that use Scrapy and want to use custom headers to control our proxy behavior. But this extension can work for handling custom headers through any proxy.
 
@@ -273,6 +293,150 @@ The extension classes work together in the following flow:
 7. **HTTP11ProxyDownloadHandler** caches the proxy headers by proxy URL for reuse with subsequent requests on the same tunnel
 
 This allows proxy response headers to be transparently available in your spider's ``parse`` methods without any special handling.
+
+Test Harness
+------------
+
+A test harness is included in the repository to verify proxy header functionality works correctly with your proxy configuration.
+
+Running the Test
+~~~~~~~~~~~~~~~~
+
+.. code-block:: bash
+
+   # Basic test
+   PROXY_URL=http://your-proxy:port python test_proxy_headers.py
+
+   # With custom response header to check
+   PROXY_URL=http://your-proxy:port PROXY_HEADER=X-ProxyMesh-IP python test_proxy_headers.py
+
+   # Send a custom header to the proxy
+   PROXY_URL=http://your-proxy:port \
+   SEND_PROXY_HEADER=X-ProxyMesh-Country \
+   SEND_PROXY_VALUE=US \
+   python test_proxy_headers.py
+
+   # Verbose output (shows header values)
+   python test_proxy_headers.py -v
+
+Environment Variables
+~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 50 25
+
+   * - Variable
+     - Description
+     - Default
+   * - ``PROXY_URL``
+     - Proxy URL (also checks ``HTTPS_PROXY``)
+     - Required
+   * - ``TEST_URL``
+     - URL to request through the proxy
+     - ``https://api.ipify.org?format=json``
+   * - ``PROXY_HEADER``
+     - Response header to check for
+     - ``X-ProxyMesh-IP``
+   * - ``SEND_PROXY_HEADER``
+     - Header name to send to proxy
+     - Optional
+   * - ``SEND_PROXY_VALUE``
+     - Value for the send header
+     - Optional
+
+Expected Output
+~~~~~~~~~~~~~~~
+
+On success:
+
+.. code-block:: text
+
+   Testing scrapy-proxy-headers
+   ============================
+   Proxy URL: http://your-proxy:port
+   Test URL: https://api.ipify.org?format=json
+   Checking for header: X-ProxyMesh-IP
+
+   [PASS] Received header X-ProxyMesh-IP
+
+With verbose flag (``-v``):
+
+.. code-block:: text
+
+   [PASS] Received header X-ProxyMesh-IP: 192.168.1.1
+
+Troubleshooting
+---------------
+
+Headers Not Being Received
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you're not receiving proxy response headers:
+
+1. **Verify the proxy supports custom headers**: Not all proxies send response headers in the CONNECT response
+2. **Check the header name**: Header names are case-insensitive but the exact spelling matters
+3. **Ensure HTTPS URL**: Proxy headers only work with HTTPS URLs (HTTP requests don't use CONNECT tunneling)
+
+Headers Only Available on First Request
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This is expected behavior when Scrapy reuses tunnel connections. The ``HTTP11ProxyDownloadHandler`` automatically caches headers by proxy URL to ensure they're available on subsequent requests.
+
+Request Failing with Connection Errors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. **Check proxy URL format**: Should be ``http://host:port`` or ``http://user:pass@host:port``
+2. **Verify proxy is accessible**: Test with ``curl -x http://your-proxy:port https://example.com``
+3. **Check firewall rules**: Ensure your environment can connect to the proxy
+
+Use Cases
+---------
+
+Geographic Targeting
+~~~~~~~~~~~~~~~~~~~~
+
+Route requests through specific countries:
+
+.. code-block:: python
+
+   yield scrapy.Request(
+       url="https://example.com",
+       meta={
+           "proxy": "http://proxy.example.com:8080",
+           "proxy_headers": {"X-ProxyMesh-Country": "US"}
+       }
+   )
+
+Session Consistency
+~~~~~~~~~~~~~~~~~~~
+
+Request the same IP across multiple requests:
+
+.. code-block:: python
+
+   # First, capture the assigned IP
+   proxy_ip = response.headers.get(b"X-ProxyMesh-IP")
+   
+   # Then request that same IP for subsequent requests
+   yield scrapy.Request(
+       url="https://example.com/page2",
+       meta={
+           "proxy": "http://proxy.example.com:8080",
+           "proxy_headers": {"X-ProxyMesh-IP": proxy_ip.decode()}
+       }
+   )
+
+Debugging and Logging
+~~~~~~~~~~~~~~~~~~~~~
+
+Log proxy information for debugging:
+
+.. code-block:: python
+
+   def parse(self, response):
+       proxy_ip = response.headers.get(b"X-ProxyMesh-IP")
+       self.logger.info(f"Request to {response.url} via proxy IP: {proxy_ip}")
 
 Indices and tables
 ==================
