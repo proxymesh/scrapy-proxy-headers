@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scrapy-proxy-headers"
-version = "0.1.5"
+version = "0.1.6"
 authors = [
   { name="ProxyMesh", email="support@proxymesh.com" },
 ]
@@ -24,3 +24,5 @@ classifiers = [
 Homepage = "https://github.com/proxymesh/scrapy-proxy-headers"
 Changelog = "https://github.com/proxymesh/scrapy-proxy-headers/commits/main/"
 Issues = "https://github.com/proxymesh/scrapy-proxy-headers/issues"
+Documentation = "https://scrapy-proxy-headers.readthedocs.io/en/latest/"
+ProxyMesh = "https://proxymesh.com"
