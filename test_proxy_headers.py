@@ -36,6 +36,9 @@ class ProxyHeaderTestSpider(scrapy.Spider):
         "DOWNLOAD_HANDLERS": {
             "https": "scrapy_proxy_headers.HTTP11ProxyDownloadHandler"
         },
+        # Allow non-2xx so parse() runs: we only assert proxy tunnel headers (e.g.
+        # X-ProxyMesh-IP), and the test URL may return 403/429 from CI egress.
+        "HTTPERROR_ALLOW_ALL": True,
         "LOG_LEVEL": "WARNING",
         "REQUEST_FINGERPRINTER_IMPLEMENTATION": "2.7",
     }
