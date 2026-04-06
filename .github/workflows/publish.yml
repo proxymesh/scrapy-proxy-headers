@@ -3,55 +3,110 @@ name: Publish to PyPI
 on:
   release:
     types: [published]
+
+  # Allow manual trigger for testing
   workflow_dispatch:
     inputs:
       test_pypi:
-        description: 'Publish to TestPyPI instead of PyPI'
+        description: "Publish to TestPyPI instead of PyPI"
         required: false
         default: false
         type: boolean
 
+  # GitHub does not start new workflow runs for events caused by the default
+  # GITHUB_TOKEN (e.g. gh release create in another workflow). After
+  # "Release on merge" creates a release, trigger publish here instead.
+  workflow_run:
+    workflows: [Release on merge]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.decide.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v6
+        if: github.event_name == 'workflow_run'
+        with:
+          ref: main
+
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" != "workflow_run" ]]; then
+            echo "publish=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [[ "${{ github.event.workflow_run.conclusion }}" != "success" ]]; then
+            echo "publish=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          VERSION="$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)"
+          TAG="v${VERSION}"
+          if gh release view "${TAG}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "publish=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "No GitHub release ${TAG} yet (or release job was skipped); skipping publish."
+            echo "publish=false" >> "${GITHUB_OUTPUT}"
+          fi
+
   build:
     name: Build distribution
+    needs: gate
+    if: needs.gate.outputs.publish == 'true'
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && 'main' || github.event_name == 'release' && github.ref || 'main' }}
+
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.x"
-      
+
       - name: Install build dependencies
-        run: python -m pip install --upgrade pip build
-      
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
       - name: Build package
         run: python -m build
-      
-      - name: Upload distribution artifacts
-        uses: actions/upload-artifact@v4
+
+      - name: Store distribution packages
+        uses: actions/upload-artifact@v7
         with:
           name: python-package-distributions
           path: dist/
 
   publish-to-pypi:
     name: Publish to PyPI
-    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.test_pypi == false)
+    if: >-
+      github.event_name == 'workflow_run' ||
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_dispatch' && inputs.test_pypi == false)
     needs: build
     runs-on: ubuntu-latest
+
     environment:
       name: pypi
       url: https://pypi.org/p/scrapy-proxy-headers
-    permissions:
-      id-token: write
+
     steps:
-      - name: Download distribution artifacts
-        uses: actions/download-artifact@v4
+      - name: Download distribution packages
+        uses: actions/download-artifact@v8
         with:
           name: python-package-distributions
           path: dist/
-      
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
@@ -60,18 +115,18 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.test_pypi == true
     needs: build
     runs-on: ubuntu-latest
+
     environment:
       name: testpypi
       url: https://test.pypi.org/p/scrapy-proxy-headers
-    permissions:
-      id-token: write
+
     steps:
-      - name: Download distribution artifacts
-        uses: actions/download-artifact@v4
+      - name: Download distribution packages
+        uses: actions/download-artifact@v8
         with:
           name: python-package-distributions
           path: dist/
-      
+
       - name: Publish to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:

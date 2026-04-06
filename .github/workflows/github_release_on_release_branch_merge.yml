@@ -1,0 +1,68 @@
+# When a release/* PR merges into main, create a GitHub release (tag vX.Y.Z).
+# Events from GITHUB_TOKEN do not start other workflows; publish.yml is triggered via
+# workflow_run when this workflow completes (see publish.yml).
+
+name: Release on merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+concurrency:
+  group: release-on-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  github-release:
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.head_ref, 'release/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout merge commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Read version from pyproject.toml
+        id: meta
+        run: |
+          python3 <<'PY'
+          import os
+          import tomllib
+
+          with open("pyproject.toml", "rb") as f:
+              data = tomllib.load(f)
+          version = data["project"]["version"]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"version={version}\n")
+          PY
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.meta.outputs.version }}"
+          TAG="v${VERSION}"
+          MERGE_SHA="${{ github.event.pull_request.merge_commit_sha }}"
+          if gh release view "${TAG}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists; skipping."
+            exit 0
+          fi
+          gh release create "${TAG}" \
+            --repo "${{ github.repository }}" \
+            --target "${MERGE_SHA}" \
+            --title "${TAG}" \
+            --generate-notes
