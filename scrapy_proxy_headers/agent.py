@@ -116,8 +116,8 @@ class ScrapyProxyHeadersAgent(ScrapyAgent):
         
         return self._agent
 
-    def _cb_bodydone(self, result, request, url: str):
-        r = super()._cb_bodydone(result, request, url)
+    def _cb_bodydone(self, result, url: str):
+        r = super()._cb_bodydone(result, url)
         if isinstance(r, Response):
             if self._agent and hasattr(self._agent, '_endpoint'):
                 proxy_response_headers = getattr(self._agent._endpoint, '_proxy_response_headers', None)
