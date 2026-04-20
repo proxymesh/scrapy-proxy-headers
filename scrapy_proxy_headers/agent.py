@@ -1,11 +1,7 @@
-import inspect
 from urllib.parse import urlparse
 from scrapy.core.downloader.handlers.http11 import TunnelingAgent, TunnelingTCP4ClientEndpoint, ScrapyAgent
 from scrapy.utils.python import to_bytes
 from scrapy.http import Headers, Response
-
-# Scrapy 2.15+ changed _cb_bodydone signature from (result, request, url) to (result, url)
-_CB_BODYDONE_PARAMS = len(inspect.signature(ScrapyAgent._cb_bodydone).parameters)
 
 def tunnel_request_data_with_headers(host: str, port: int, **proxy_headers) -> bytes:
     r"""
