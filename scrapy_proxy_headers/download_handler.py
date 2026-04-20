@@ -7,8 +7,12 @@ class HTTP11ProxyDownloadHandler(HTTP11DownloadHandler):
         super().__init__(*args, **kwargs)
         self._proxy_headers_by_proxy = {}
     
-    def download_request(self, request, spider):
+    def download_request(self, request, spider=None):
         """Return a deferred for the HTTP download"""
+        # Support both old Scrapy (spider param) and new Scrapy (self._crawler.spider)
+        if spider is None:
+            spider = self._crawler.spider
+        
         agent = ScrapyProxyHeadersAgent(
             contextFactory=self._contextFactory,
             pool=self._pool,

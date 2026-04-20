@@ -11,6 +11,9 @@ authors = [
 description = "Add custom proxy headers to HTTPS requests in Scrapy"
 readme = "README.md"
 requires-python = ">=3.8"
+dependencies = [
+    "scrapy>=2.14.1",
+]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
