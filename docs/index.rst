@@ -195,7 +195,7 @@ The agent:
 **Methods:**
 
 * ``_get_agent(request, timeout)`` - Returns an agent configured with proxy headers from ``request.meta["proxy_headers"]``
-* ``_cb_bodydone(result, request, url)`` - Callback that merges proxy response headers into the final response
+* ``_cb_bodydone(result, *args)`` - Callback that merges proxy response headers into the final response (compatible with Scrapy 2.14 and 2.15+)
 
 TunnelingHeadersAgent
 ~~~~~~~~~~~~~~~~~~~~~

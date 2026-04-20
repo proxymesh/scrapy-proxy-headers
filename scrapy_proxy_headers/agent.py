@@ -103,6 +103,7 @@ class ScrapyProxyHeadersAgent(ScrapyAgent):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._agent = None
+        self.proxy_response_headers = None
     
     def _get_agent(self, request, timeout: float):
         self._agent = super()._get_agent(request, timeout)
@@ -116,13 +117,13 @@ class ScrapyProxyHeadersAgent(ScrapyAgent):
         
         return self._agent
 
-    def _cb_bodydone(self, result, request, url: str):
-        r = super()._cb_bodydone(result, request, url)
+    def _cb_bodydone(self, result, *args):
+        # Scrapy 2.15+ changed signature from (result, request, url) to (result, url)
+        r = super()._cb_bodydone(result, *args)
         if isinstance(r, Response):
             if self._agent and hasattr(self._agent, '_endpoint'):
                 proxy_response_headers = getattr(self._agent._endpoint, '_proxy_response_headers', None)
                 if proxy_response_headers:
                     r.headers.update(proxy_response_headers)
-                    # save this for download handler
-                    r._proxy_response_headers = proxy_response_headers
+                    self.proxy_response_headers = proxy_response_headers
         return r

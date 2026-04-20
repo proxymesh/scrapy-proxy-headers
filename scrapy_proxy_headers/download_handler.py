@@ -1,13 +1,18 @@
 from scrapy.core.downloader.handlers.http11 import HTTP11DownloadHandler
 from scrapy_proxy_headers.agent import ScrapyProxyHeadersAgent
 
+
 class HTTP11ProxyDownloadHandler(HTTP11DownloadHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._proxy_headers_by_proxy = {}
     
-    def download_request(self, request, spider):
+    def download_request(self, request, spider=None):
         """Return a deferred for the HTTP download"""
+        # Support both old Scrapy (spider param) and new Scrapy (self._crawler.spider)
+        if spider is None:
+            spider = self._crawler.spider
+        
         agent = ScrapyProxyHeadersAgent(
             contextFactory=self._contextFactory,
             pool=self._pool,
@@ -20,13 +25,12 @@ class HTTP11ProxyDownloadHandler(HTTP11DownloadHandler):
         proxy = request.meta.get("proxy")
 
         if proxy:
-            # we need to do all this because the proxy tunnels can get re-used
-            # when that happens, the proxy headers are not available in subsequent responses
-            # so we need to save the proxy headers by the proxy, from the first tunnel response
-            # so we can add them to subsequent responses
+            # Proxy tunnels can get re-used; when that happens, proxy headers
+            # are not available in subsequent responses. Save proxy headers by
+            # proxy URL from the first tunnel response to add to later responses.
             def callback(response):
-                if hasattr(response, '_proxy_response_headers'):
-                    self._proxy_headers_by_proxy[proxy] = response._proxy_response_headers
+                if agent.proxy_response_headers:
+                    self._proxy_headers_by_proxy[proxy] = agent.proxy_response_headers
 
                 if proxy in self._proxy_headers_by_proxy:
                     response.headers.update(self._proxy_headers_by_proxy[proxy])
