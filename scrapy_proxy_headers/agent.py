@@ -107,6 +107,7 @@ class ScrapyProxyHeadersAgent(ScrapyAgent):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._agent = None
+        self.proxy_response_headers = None
     
     def _get_agent(self, request, timeout: float):
         self._agent = super()._get_agent(request, timeout)
@@ -128,4 +129,5 @@ class ScrapyProxyHeadersAgent(ScrapyAgent):
                 proxy_response_headers = getattr(self._agent._endpoint, '_proxy_response_headers', None)
                 if proxy_response_headers:
                     r.headers.update(proxy_response_headers)
+                    self.proxy_response_headers = proxy_response_headers
         return r
