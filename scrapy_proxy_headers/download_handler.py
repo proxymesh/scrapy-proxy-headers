@@ -25,6 +25,9 @@ class HTTP11ProxyDownloadHandler(HTTP11DownloadHandler):
         proxy = request.meta.get("proxy")
 
         if proxy:
+            # Proxy tunnels can get re-used; when that happens, proxy headers
+            # are not available in subsequent responses. Save proxy headers by
+            # proxy URL from the first tunnel response to add to later responses.
             def callback(response):
                 if agent.proxy_response_headers:
                     self._proxy_headers_by_proxy[proxy] = agent.proxy_response_headers
