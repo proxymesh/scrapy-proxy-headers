@@ -145,7 +145,11 @@ def run_test(proxy_url: str, test_url: str, proxy_header: str,
             print(f"[PASS] Received header {proxy_header}")
         return True
     else:
-        print(f"[FAIL] {spider_instance.error_message}")
+        msg = spider_instance.error_message or (
+            "Spider finished without parse() or errback; the download handler "
+            "may have failed to load"
+        )
+        print(f"[FAIL] {msg}")
         return False
 
 
