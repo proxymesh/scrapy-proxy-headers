@@ -55,20 +55,25 @@ class ProxyHeaderTestSpider(scrapy.Spider):
         self.test_passed = False
         self.header_value = None
         self.error_message = None
-    
-    def start_requests(self):
+
+    def _start_request(self):
         meta = {"proxy": self.proxy_url}
-        
-        # Add custom proxy headers if specified
         if self.send_header and self.send_value:
             meta["proxy_headers"] = {self.send_header: self.send_value}
-        
-        yield scrapy.Request(
+        return scrapy.Request(
             url=self.test_url,
             meta=meta,
             callback=self.parse,
-            errback=self.handle_error
+            errback=self.handle_error,
         )
+
+    async def start(self):
+        """Scrapy 2.13+ entrypoint; 2.18 removed start_requests()."""
+        yield self._start_request()
+
+    def start_requests(self):
+        """Kept for Scrapy < 2.18, which still calls start_requests()."""
+        yield self._start_request()
     
     def parse(self, response):
         # Check for the expected proxy header
