@@ -1,7 +1,20 @@
 from urllib.parse import urlparse
-from scrapy.core.downloader.handlers.http11 import TunnelingAgent, TunnelingTCP4ClientEndpoint, ScrapyAgent
-from scrapy.utils.python import to_bytes
+
+from scrapy.core.downloader.handlers import http11 as _http11
 from scrapy.http import Headers, Response
+from scrapy.utils.httpobj import urlparse_cached
+from scrapy.utils.python import to_bytes
+from scrapy.utils.url import add_http_if_no_scheme
+
+# Scrapy 2.18 made these HTTP11 internals private (leading underscore).
+TunnelingTCP4ClientEndpoint = getattr(
+    _http11, "TunnelingTCP4ClientEndpoint", None
+) or getattr(_http11, "_TunnelingTCP4ClientEndpoint")
+TunnelingAgent = getattr(_http11, "TunnelingAgent", None) or getattr(
+    _http11, "_TunnelingAgent"
+)
+ScrapyAgent = getattr(_http11, "ScrapyAgent", None) or getattr(_http11, "_ScrapyAgent")
+
 
 def tunnel_request_data_with_headers(host: str, port: int, **proxy_headers) -> bytes:
     r"""
@@ -18,12 +31,13 @@ def tunnel_request_data_with_headers(host: str, port: int, **proxy_headers) -> b
     host_value = to_bytes(host, encoding="ascii") + b":" + to_bytes(str(port))
     tunnel_req = b"CONNECT " + host_value + b" HTTP/1.1\r\n"
     tunnel_req += b"Host: " + host_value + b"\r\n"
-    
+
     for key, val in proxy_headers.items():
         tunnel_req += to_bytes(key) + b": " + to_bytes(val) + b"\r\n"
-    
+
     tunnel_req += b"\r\n"
     return tunnel_req
+
 
 class TunnelingHeadersTCP4ClientEndpoint(TunnelingTCP4ClientEndpoint):
     def __init__(
@@ -34,7 +48,7 @@ class TunnelingHeadersTCP4ClientEndpoint(TunnelingTCP4ClientEndpoint):
         proxyConf,
         contextFactory,
         timeout: float = 30,
-        bindAddress = None,
+        bindAddress=None,
         **proxy_headers
     ):
         super().__init__(reactor, host, port, proxyConf, contextFactory, timeout, bindAddress)
@@ -43,7 +57,7 @@ class TunnelingHeadersTCP4ClientEndpoint(TunnelingTCP4ClientEndpoint):
         if self._proxyAuthHeader:
             self._proxy_headers['Proxy-Authorization'] = self._proxyAuthHeader
         self._proxy_headers.update(proxy_headers)
-    
+
     def requestTunnel(self, protocol):
         """Asks the proxy to open a tunnel."""
         assert protocol.transport
@@ -55,7 +69,7 @@ class TunnelingHeadersTCP4ClientEndpoint(TunnelingTCP4ClientEndpoint):
         protocol.dataReceived = self.processProxyResponse  # type: ignore[method-assign]
         self._protocol = protocol
         return protocol
-    
+
     def processProxyResponse(self, data: bytes):
         # data might have proxy headers, looks like
         # b'HTTP/1.1 200 Connection established\r\nProxy-Header: VALUE\r\n\r\n'
@@ -69,6 +83,7 @@ class TunnelingHeadersTCP4ClientEndpoint(TunnelingTCP4ClientEndpoint):
         self._proxy_response_headers = Headers(response_headers)
         return super(TunnelingHeadersTCP4ClientEndpoint, self).processProxyResponse(data)
 
+
 class TunnelingHeadersAgent(TunnelingAgent):
     """An agent that uses a L{TunnelingTCP4ClientEndpoint} to make HTTPS
     downloads. It may look strange that we have chosen to subclass Agent and not
@@ -79,7 +94,7 @@ class TunnelingHeadersAgent(TunnelingAgent):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._proxy_headers = {}
-    
+
     def set_proxy_headers(self, proxy_headers):
         self._proxy_headers = proxy_headers
 
@@ -97,6 +112,7 @@ class TunnelingHeadersAgent(TunnelingAgent):
         )
         return self._endpoint
 
+
 class ScrapyProxyHeadersAgent(ScrapyAgent):
     _TunnelingAgent = TunnelingHeadersAgent
 
@@ -104,17 +120,49 @@ class ScrapyProxyHeadersAgent(ScrapyAgent):
         super().__init__(*args, **kwargs)
         self._agent = None
         self.proxy_response_headers = None
-    
-    def _get_agent(self, request, timeout: float):
-        self._agent = super()._get_agent(request, timeout)
 
+    def _get_agent(self, request, timeout: float):
+        # Scrapy 2.18+ instantiates _TunnelingAgent directly instead of
+        # self._TunnelingAgent, so always build our subclass for HTTPS proxies.
         proxy = request.meta.get("proxy")
-        proxy_headers = request.meta.get('proxy_headers')
-        if proxy and proxy_headers:
-            scheme = urlparse(request.url).scheme
-            if scheme == "https":
+        if proxy and urlparse_cached(request).scheme == "https":
+            from twisted.internet import reactor
+
+            proxy = add_http_if_no_scheme(proxy)
+            proxy_parsed = urlparse(proxy)
+            proxy_host = proxy_parsed.hostname
+            proxy_port = proxy_parsed.port
+            if not proxy_port:
+                proxy_port = 443 if proxy_parsed.scheme == "https" else 80
+            if proxy_parsed.scheme == "https":
+                raise NotImplementedError(
+                    "HTTPS proxies for HTTPS destinations are not supported"
+                )
+            bindaddress = request.meta.get("bindaddress") or self._bindAddress
+            try:
+                from scrapy.utils._download_handlers import normalize_bind_address
+                bindaddress = normalize_bind_address(bindaddress)
+            except ImportError:
+                pass
+            proxyAuth = request.headers.get(b"Proxy-Authorization", None)
+            proxyConf = (proxy_host, proxy_port, proxyAuth)
+            self._agent = TunnelingHeadersAgent(
+                reactor=reactor,
+                proxyConf=proxyConf,
+                contextFactory=self._contextFactory,
+                connectTimeout=timeout,
+                bindAddress=bindaddress,
+                pool=self._pool,
+            )
+            proxy_headers = request.meta.get("proxy_headers")
+            if proxy_headers:
                 self._agent.set_proxy_headers(proxy_headers)
-        
+            return self._agent
+
+        self._agent = super()._get_agent(request, timeout)
+        proxy_headers = request.meta.get("proxy_headers")
+        if proxy and proxy_headers and hasattr(self._agent, "set_proxy_headers"):
+            self._agent.set_proxy_headers(proxy_headers)
         return self._agent
 
     def _cb_bodydone(self, result, *args):
