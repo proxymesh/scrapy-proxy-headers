@@ -1,18 +1,47 @@
+# Approve Dependabot pull requests and enable auto-merge so GitHub merges them once
+# required status checks pass. Requires:
+# - Settings → General → Pull Requests → Allow auto-merge
+# - Settings → Actions → General → Allow GitHub Actions to create and approve pull requests
+# - Branch protection required status checks (reviews are satisfied by this workflow)
+# See: https://docs.github.com/en/code-security/dependabot/working-with-dependabot/automating-dependabot-with-github-actions
+#
+# All Dependabot version updates (including majors) are auto-approved and auto-merged.
+
 name: dependabot-auto-merge
+
 on:
-  pull_request_target
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
 permissions:
   contents: write
   pull-requests: write
+
 jobs:
   automerge:
-    if: github.actor == 'dependabot[bot]'
+    # Same-repo Dependabot PRs only. Key off the PR author so synchronize events from
+    # branch updates (non-Dependabot merge commits) still run. Never check out PR code.
+    if: >
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a # v2.5.0
-        id: meta
-      - if: steps.meta.outputs.update-type != 'version-update:semver-major'
-        run: gh pr merge --auto --squash "$PR"
+      - name: Approve pull request
+        run: |
+          set -euo pipefail
+          if [ "$(gh pr view "$PR" --json reviewDecision -q .reviewDecision)" != "APPROVED" ]; then
+            gh pr review --approve "$PR"
+          fi
+        env:
+          PR: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge
+        run: |
+          set -euo pipefail
+          if [ "$(gh pr view "$PR" --json autoMergeRequest -q '.autoMergeRequest != null')" != "true" ]; then
+            gh pr merge --auto --squash "$PR"
+          fi
         env:
           PR: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
