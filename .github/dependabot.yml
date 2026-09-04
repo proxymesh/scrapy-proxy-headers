@@ -1,5 +1,7 @@
 version: 2
 updates:
+  # Grouping reduces PR noise; all version updates (including majors) auto-merge via
+  # .github/workflows/dependabot-auto-merge.yml once required checks pass.
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
@@ -17,17 +19,27 @@ updates:
         update-types:
           - "minor"
           - "patch"
-      dev-all:
+      prod-major:
+        dependency-type: "production"
+        update-types:
+          - "major"
+      dev-minor-patch:
         dependency-type: "development"
         update-types:
           - "minor"
           - "patch"
+      dev-major:
+        dependency-type: "development"
+        update-types:
           - "major"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
+    labels:
+      - "dependencies"
+      - "automerge"
     groups:
       actions:
         patterns:
