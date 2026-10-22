@@ -17,9 +17,9 @@ permissions:
 jobs:
   compat:
     name: py${{ matrix.python }} / scrapy ${{ matrix.scrapy }}
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
-    # On the weekly schedule, keep the master cells and skip released Scrapy.
-    if: github.event_name != 'schedule' || matrix.scrapy == 'master'
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -74,6 +74,47 @@ jobs:
               exit 1
               ;;
           esac
+          python - << 'PY'
+          import platform
+          import scrapy
+          import scrapy_proxy_headers
+          print("python", platform.python_version())
+          print("scrapy", scrapy.__version__)
+          print("detection", scrapy_proxy_headers.detection_details())
+          PY
+
+      - name: Run tests
+        run: pytest -v
+
+  # Weekly re-check of Scrapy master. Pull requests already run master inside
+  # the compat matrix above, and those cells are required to pass.
+  master-weekly:
+    name: weekly py${{ matrix.python }} / scrapy master
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14", "3.15"]
+        scrapy: ["master"]
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install Scrapy master and the package
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install "git+https://github.com/scrapy/scrapy@master"
           python - << 'PY'
           import platform
           import scrapy
