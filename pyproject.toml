@@ -4,28 +4,45 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scrapy-proxy-headers"
-version = "0.2.1"
+version = "0.3.0"
 authors = [
   { name="ProxyMesh", email="support@proxymesh.com" },
 ]
 description = "Add custom proxy headers to HTTPS requests in Scrapy"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
     "scrapy>=2.14.2",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Operating System :: OS Independent",
-	"License :: OSI Approved :: BSD License",
-	"Intended Audience :: Developers",
-	"Topic :: Internet :: WWW/HTTP",
+    "License :: OSI Approved :: BSD License",
+    "Intended Audience :: Developers",
+    "Topic :: Internet :: WWW/HTTP",
     "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
 ]
 
 [project.urls]
 Homepage = "https://github.com/proxymesh/scrapy-proxy-headers"
-Changelog = "https://github.com/proxymesh/scrapy-proxy-headers/commits/main/"
+Changelog = "https://github.com/proxymesh/scrapy-proxy-headers/blob/main/CHANGELOG.md"
 Issues = "https://github.com/proxymesh/scrapy-proxy-headers/issues"
 Documentation = "https://scrapy-proxy-headers.readthedocs.io/en/latest/"
 ProxyMesh = "https://proxymesh.com"
+
+[tool.setuptools.packages.find]
+include = ["scrapy_proxy_headers*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

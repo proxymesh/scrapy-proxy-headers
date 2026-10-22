@@ -92,7 +92,7 @@ class ProxyHeadersSpider(scrapy.Spider):
         yield scrapy.Request(
             url="https://api.ipify.org?format=json",
             meta={
-                "proxy": "http://us.proxymesh.com:31280",
+                "proxy": "http://proxy.example.com:8080",
                 "proxy_headers": {"X-ProxyMesh-Country": "US"}
             },
             callback=self.parse_ip
@@ -107,6 +107,10 @@ class ProxyHeadersSpider(scrapy.Spider):
             "proxy_ip": proxy_ip.decode() if proxy_ip else None
         }
 ```
+
+## Scrapy 2.20+ / native proxy_headers
+
+Scrapy master sends `request.meta["proxy_headers"]` on CONNECT. Header-only users can omit `DOWNLOAD_HANDLERS`. Spiders that read CONNECT response headers such as `X-ProxyMesh-IP` should keep `HTTP11ProxyDownloadHandler`. The detected path is `scrapy_proxy_headers.PROXY_HEADERS_MODE` (`native` or `legacy`). Use `http://proxy.example.com:8080` in examples. Do not put real proxy credentials in docs or tests.
 
 ## Proxy Headers
 
