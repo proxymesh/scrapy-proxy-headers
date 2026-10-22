@@ -56,6 +56,16 @@ def _values(headers: dict[str, list[str]], name: str) -> list[str]:
     return found
 
 
+def test_ci_expected_mode() -> None:
+    """CI sets EXPECT_PROXY_HEADERS_MODE so a skipped master install cannot pass."""
+    expected = os.environ.get("EXPECT_PROXY_HEADERS_MODE", "")
+    if not expected or expected == "any":
+        return
+    assert scrapy_proxy_headers.PROXY_HEADERS_MODE == expected, (
+        scrapy_proxy_headers.detection_details()
+    )
+
+
 def test_detected_mode_matches_scrapy_features() -> None:
     assert scrapy_proxy_headers.get_proxy_headers_mode() == _expected_mode()
     assert scrapy_proxy_headers.PROXY_HEADERS_MODE == _expected_mode()
