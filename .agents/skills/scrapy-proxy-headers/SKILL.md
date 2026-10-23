@@ -47,7 +47,7 @@ import scrapy
 class MySpider(scrapy.Spider):
     name = "example"
     
-    def start_requests(self):
+    async def start(self):
         yield scrapy.Request(
             url="https://api.ipify.org?format=json",
             meta={
@@ -60,6 +60,8 @@ class MySpider(scrapy.Spider):
         proxy_ip = response.headers.get("X-ProxyMesh-IP")
         self.logger.info(f"Proxy IP: {proxy_ip}")
 ```
+
+Scrapy 2.13+ starts the spider at `async def start()`. On Scrapy 2.18+, including 2.19, `start_requests()` alone sends nothing. For Scrapy older than 2.13, also define `start_requests()` with the same request.
 
 ## Receiving Proxy Response Headers
 
@@ -88,11 +90,12 @@ class ProxyHeadersSpider(scrapy.Spider):
         }
     }
     
-    def start_requests(self):
+    async def start(self):
+        # Scrapy < 2.13 calls start_requests() instead; define that too on those releases.
         yield scrapy.Request(
             url="https://api.ipify.org?format=json",
             meta={
-                "proxy": "http://us.proxymesh.com:31280",
+                "proxy": "http://proxy.example.com:8080",
                 "proxy_headers": {"X-ProxyMesh-Country": "US"}
             },
             callback=self.parse_ip
@@ -107,6 +110,10 @@ class ProxyHeadersSpider(scrapy.Spider):
             "proxy_ip": proxy_ip.decode() if proxy_ip else None
         }
 ```
+
+## Scrapy 2.20+ / native proxy_headers
+
+Scrapy master sends `request.meta["proxy_headers"]` on CONNECT. Header-only users can omit `DOWNLOAD_HANDLERS`. Spiders that read CONNECT response headers such as `X-ProxyMesh-IP` should keep `HTTP11ProxyDownloadHandler`. The detected path is `scrapy_proxy_headers.PROXY_HEADERS_MODE` (`native` or `legacy`). Use `http://proxy.example.com:8080` in examples. Do not put real proxy credentials in docs or tests.
 
 ## Proxy Headers
 
