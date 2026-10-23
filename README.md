@@ -61,8 +61,8 @@ import scrapy
 
 class MySpider(scrapy.Spider):
     name = "example"
-    
-    def start_requests(self):
+
+    async def start(self):
         yield scrapy.Request(
             url="https://api.ipify.org?format=json",
             meta={
@@ -76,6 +76,8 @@ class MySpider(scrapy.Spider):
         proxy_ip = response.headers.get("X-ProxyMesh-IP")
         self.logger.info(f"Proxy IP: {proxy_ip}")
 ```
+
+Scrapy 2.13 and newer starts the spider at `async def start()`. On Scrapy 2.18 and newer, including 2.19, a spider that only defines `start_requests()` sends no requests. For Scrapy older than 2.13, also define `start_requests()` and yield the same request from there.
 
 ### 3. Receive Proxy Response Headers
 
@@ -134,7 +136,8 @@ class ProxyHeadersSpider(scrapy.Spider):
         }
     }
     
-    def start_requests(self):
+    async def start(self):
+        # Scrapy < 2.13 calls start_requests() instead; define that too on those releases.
         yield scrapy.Request(
             url="https://api.ipify.org?format=json",
             meta={

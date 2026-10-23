@@ -1,13 +1,15 @@
 # Compatibility tests against released Scrapy and Scrapy master.
 # Runs on ubuntu-24.04 only. Scrapy master cells are required: a failure
 # fails this workflow (there is no continue-on-error). The weekly schedule
-# re-runs those master cells from the default branch after this workflow
-# is merged. It does not change repository settings or publish a release.
+# and workflow_dispatch re-run latest PyPI Scrapy and Scrapy master from
+# the default branch after this workflow is merged. It does not change
+# repository settings or publish a release.
 
 name: Tests
 
 on:
   pull_request:
+  workflow_dispatch:
   schedule:
     - cron: "0 6 * * 1"
 
@@ -103,18 +105,22 @@ jobs:
           EXPECT_PROXY_HEADERS_MODE: ${{ matrix.scrapy == 'master' && 'native' || matrix.scrapy == 'latest' && 'any' || 'legacy' }}
         run: pytest -v
 
-  # Weekly re-check of Scrapy master. Pull requests already run master inside
-  # the compat matrix above, and those cells are required to pass.
-  master-weekly:
-    name: weekly py${{ matrix.python }} / scrapy master
-    if: github.event_name == 'schedule'
+  # Weekly and manual re-check of latest PyPI Scrapy and Scrapy master.
+  # Pull requests already run both inside the compat matrix above.
+  weekly:
+    name: weekly py${{ matrix.python }} / scrapy ${{ matrix.scrapy }}
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.12", "3.13", "3.14", "3.15"]
-        scrapy: ["master"]
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
+        scrapy: ["latest", "master"]
+        exclude:
+          # Scrapy master requires Python >= 3.11.
+          - python: "3.10"
+            scrapy: master
 
     steps:
       - uses: actions/checkout@v7
@@ -126,24 +132,48 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Install Scrapy master and the package
+      - name: Install Scrapy ${{ matrix.scrapy }} and the package
+        env:
+          EXPECT_PROXY_HEADERS_MODE: ${{ matrix.scrapy == 'master' && 'native' || 'any' }}
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-          pip install --upgrade --force-reinstall "git+https://github.com/scrapy/scrapy@master"
+          case "${{ matrix.scrapy }}" in
+            latest)
+              pip install --upgrade Scrapy
+              ;;
+            master)
+              # Master still reports version 2.19.0, so a plain install is
+              # skipped when PyPI 2.19.0 is already present.
+              pip install --upgrade --force-reinstall "git+https://github.com/scrapy/scrapy@master"
+              ;;
+            *)
+              echo "Unknown Scrapy matrix value: ${{ matrix.scrapy }}"
+              exit 1
+              ;;
+          esac
           python - << 'PY'
+          import os
           import platform
           import scrapy
           import scrapy.core.downloader.handlers.http11 as http11
           import scrapy_proxy_headers
+          expected = os.environ.get("EXPECT_PROXY_HEADERS_MODE", "")
+          details = scrapy_proxy_headers.detection_details()
           print("python", platform.python_version())
           print("scrapy", scrapy.__version__, scrapy.__file__)
-          print("detection", scrapy_proxy_headers.detection_details())
-          assert hasattr(http11, "_TunnelProtocol"), http11.__file__
+          print("expected_mode", expected)
+          print("detection", details)
+          if expected and expected != "any" and details["mode"] != expected:
+              raise SystemExit(
+                  f"expected proxy_headers mode {expected!r}, got {details!r}"
+              )
+          if expected == "native" and not hasattr(http11, "_TunnelProtocol"):
+              raise SystemExit(f"native Scrapy is missing _TunnelProtocol: {http11.__file__}")
           PY
 
       - name: Run tests
         env:
-          EXPECT_PROXY_HEADERS_MODE: native
+          EXPECT_PROXY_HEADERS_MODE: ${{ matrix.scrapy == 'master' && 'native' || 'any' }}
         run: pytest -v

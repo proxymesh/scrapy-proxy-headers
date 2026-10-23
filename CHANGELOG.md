@@ -10,7 +10,7 @@ The version in `pyproject.toml` is 0.3.0. The release date and final version are
 - On that native implementation (Scrapy master, expected in the 2.20 line), let Scrapy send the CONNECT headers and only capture the proxy's CONNECT response headers, including `X-ProxyMesh-IP`.
 - Expose the detected mode as `scrapy_proxy_headers.PROXY_HEADERS_MODE` and `get_proxy_headers_mode()` (`native` or `legacy`) plus `detection_details()` for debugging.
 - Local pytest coverage for CONNECT header delivery, proxy response headers, duplicate headers, per-header-set caching, and tunnel reuse. No proxy credentials are required.
-- GitHub Actions matrix for Scrapy 2.14.2, 2.18.x, 2.19.0, the latest PyPI release, and Scrapy master, across the CPython versions those releases support. A weekly schedule re-runs the Scrapy master cells.
+- GitHub Actions matrix for Scrapy 2.14.2, 2.18.x, 2.19.0, the latest PyPI release, and Scrapy master, across the CPython versions those releases support. A weekly schedule, also available through `workflow_dispatch`, re-runs the latest PyPI release and Scrapy master.
 
 ### Fixed
 
@@ -22,3 +22,4 @@ The version in `pyproject.toml` is 0.3.0. The release date and final version are
 - Require Python 3.10 or newer, matching Scrapy 2.14.2.
 - Keep the dependency as `scrapy>=2.14.2` with no upper cap, so the upcoming Scrapy release stays installable.
 - Private Scrapy downloader access is isolated in `scrapy_proxy_headers.compat` and raises `ScrapyInternalsError` when those internals move again.
+- Documented spiders use `async def start()`. Scrapy 2.18 and newer, including 2.19, does not call `start_requests()`.

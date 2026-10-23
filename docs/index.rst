@@ -65,7 +65,7 @@ When you want to make a request with a custom proxy header, instead of using ``r
    class MySpider(scrapy.Spider):
        name = "my_spider"
        
-       def start_requests(self):
+       async def start(self):
            yield scrapy.Request(
                url="https://api.ipify.org?format=json",
                meta={
@@ -79,6 +79,8 @@ When you want to make a request with a custom proxy header, instead of using ``r
            proxy_ip = response.headers.get("X-ProxyMesh-IP")
            self.logger.info(f"Proxy IP: {proxy_ip}")
            yield {"ip": response.json()["ip"], "proxy_ip": proxy_ip}
+
+Scrapy 2.13 and newer starts the spider at ``async def start()``. On Scrapy 2.18 and newer, including 2.19, a spider that only defines ``start_requests()`` sends no requests. For Scrapy older than 2.13, also define ``start_requests()`` and yield the same request from there.
 
 Receiving Proxy Response Headers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -121,7 +123,8 @@ Here's a complete example spider that uses proxy headers:
            }
        }
        
-       def start_requests(self):
+       async def start(self):
+           # Scrapy < 2.13 calls start_requests() instead; define that too on those releases.
            # Request with proxy headers to select US country
            yield scrapy.Request(
                url="https://api.ipify.org?format=json",

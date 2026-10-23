@@ -14,7 +14,17 @@ requires-python = ">=3.10"
 dependencies = [
     "scrapy>=2.14.2",
 ]
+keywords = [
+    "scrapy",
+    "proxy",
+    "proxy headers",
+    "CONNECT",
+    "https proxy",
+    "rotating proxy",
+    "web scraping",
+]
 classifiers = [
+    "Framework :: Scrapy",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
