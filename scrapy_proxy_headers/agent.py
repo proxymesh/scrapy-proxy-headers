@@ -209,10 +209,18 @@ class TunnelingHeadersTCP4ClientEndpoint(TunnelingTCP4ClientEndpoint):
         return protocol
 
     def processProxyResponse(self, data: bytes):
-        # data might have proxy headers, looks like
-        # b'HTTP/1.1 200 Connection established\r\nProxy-Header: VALUE\r\n\r\n'
-        self._proxy_response_headers = parse_connect_response_headers(data)
-        return super(TunnelingHeadersTCP4ClientEndpoint, self).processProxyResponse(data)
+        """Parse CONNECT headers from the reassembled buffer, not this chunk.
+
+        The parent endpoint buffers TCP chunks until ``\\r\\n\\r\\n``. Parsing
+        only ``data`` drops header lines from earlier chunks and can treat
+        bytes after a split terminator as headers.
+        """
+        result = super(TunnelingHeadersTCP4ClientEndpoint, self).processProxyResponse(data)
+        if b"\r\n\r\n" in self._connectBuffer:
+            self._proxy_response_headers = parse_connect_response_headers(
+                bytes(self._connectBuffer)
+            )
+        return result
 
 
 class TunnelingHeadersAgent(TunnelingAgent):

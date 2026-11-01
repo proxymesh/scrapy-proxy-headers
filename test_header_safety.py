@@ -6,6 +6,7 @@ import unittest
 from scrapy.http import Headers, Request, Response
 
 from scrapy_proxy_headers.agent import (
+    TunnelingHeadersTCP4ClientEndpoint,
     merge_proxy_response_headers,
     parse_connect_response_headers,
     tunnel_request_data_with_headers,
@@ -48,6 +49,60 @@ class TunnelRequestCrlfTests(unittest.TestCase):
     def test_crlf_in_host_is_rejected(self):
         with self.assertRaises(ValueError):
             tunnel_request_data_with_headers("example.com\r\nX-Injected: 1", 443)
+
+
+class ConnectResponseReassemblyTests(unittest.TestCase):
+    def _endpoint(self):
+        class Transport:
+            def startTLS(self, *args, **kwargs):
+                return None
+
+            def write(self, data):
+                return None
+
+        class Protocol:
+            def __init__(self):
+                self.transport = Transport()
+
+            def dataReceived(self, data):
+                return None
+
+        class ContextFactory:
+            def creatorForNetloc(self, host, port):
+                return object()
+
+        endpoint = TunnelingHeadersTCP4ClientEndpoint(
+            reactor=None,
+            host="example.com",
+            port=443,
+            proxyConf=("proxy.example", 8080, None),
+            contextFactory=ContextFactory(),
+        )
+        endpoint._protocol = Protocol()
+        endpoint._protocolDataReceived = endpoint._protocol.dataReceived
+        endpoint._protocolFactory = object()
+        return endpoint
+
+    def test_split_chunks_keep_headers_and_ignore_bytes_after_terminator(self):
+        endpoint = self._endpoint()
+        endpoint.processProxyResponse(
+            b"HTTP/1.1 200 Connection established\r\n"
+            b"X-ProxyMesh-IP: 203.0.113.9\r\n"
+        )
+        self.assertFalse(hasattr(endpoint, "_proxy_response_headers"))
+
+        endpoint.processProxyResponse(
+            b"X-ProxyMesh-Country: US\r\n"
+            b"\r\n"
+            b"X-Injected: from-body\r\n"
+            b"Set-Cookie: session=from-body\r\n"
+            b"\r\n"
+        )
+        headers = endpoint._proxy_response_headers
+        self.assertEqual(headers.get(b"X-ProxyMesh-IP"), b"203.0.113.9")
+        self.assertEqual(headers.get(b"X-ProxyMesh-Country"), b"US")
+        self.assertIsNone(headers.get(b"X-Injected"))
+        self.assertIsNone(headers.get(b"Set-Cookie"))
 
 
 class ConnectResponseParseTests(unittest.TestCase):
