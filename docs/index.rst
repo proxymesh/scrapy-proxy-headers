@@ -83,14 +83,19 @@ When you want to make a request with a custom proxy header, instead of using ``r
 Receiving Proxy Response Headers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Any response headers that come from the proxy will be available in ``response.headers``:
+Proxy-specific CONNECT headers such as ``X-ProxyMesh-IP`` are copied into
+``response.headers`` when they do not already exist on the origin response.
+Origin-semantic headers (``Set-Cookie``, ``Content-Type``, ``Location``, and
+similar) are not copied from CONNECT. The full CONNECT header set is stored on
+``response.meta["proxy_response_headers"]``.
 
 .. code-block:: python
 
    def parse(self, response):
-       # Proxy response headers are merged into response.headers
+       # Proxy-specific headers remain on response.headers
        proxy_ip = response.headers.get("X-ProxyMesh-IP")
        print(f"Request was made through IP: {proxy_ip}")
+       connect_headers = response.meta.get("proxy_response_headers")
 
 Proxy Headers Overview
 ----------------------
@@ -288,7 +293,9 @@ The extension classes work together in the following flow:
 
 5. When the proxy responds to the CONNECT request, ``processProxyResponse()`` captures any response headers
 
-6. After the request completes, the proxy response headers are merged into the final ``Response`` object
+6. After the request completes, safe proxy-specific CONNECT headers are copied
+   onto the ``Response``; origin-semantic CONNECT headers are kept only on
+   ``request.meta["proxy_response_headers"]``
 
 7. **HTTP11ProxyDownloadHandler** caches the proxy headers by proxy URL for reuse with subsequent requests on the same tunnel
 

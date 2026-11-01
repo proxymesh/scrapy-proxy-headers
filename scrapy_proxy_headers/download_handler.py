@@ -1,6 +1,9 @@
 from scrapy.core.downloader.handlers.http11 import HTTP11DownloadHandler
 from scrapy.utils.defer import maybe_deferred_to_future
-from scrapy_proxy_headers.agent import ScrapyProxyHeadersAgent
+from scrapy_proxy_headers.agent import (
+    ScrapyProxyHeadersAgent,
+    merge_proxy_response_headers,
+)
 
 
 class HTTP11ProxyDownloadHandler(HTTP11DownloadHandler):
@@ -9,7 +12,7 @@ class HTTP11ProxyDownloadHandler(HTTP11DownloadHandler):
         self._proxy_headers_by_proxy = {}
 
     async def download_request(self, request, spider=None):
-        """Download the request and merge CONNECT proxy headers into the response."""
+        """Download the request and attach safe CONNECT proxy headers to the response."""
         # Support both old Scrapy (spider param) and new Scrapy (self._crawler.spider)
         if spider is None:
             spider = self._crawler.spider
@@ -39,7 +42,11 @@ class HTTP11ProxyDownloadHandler(HTTP11DownloadHandler):
                     self._proxy_headers_by_proxy[proxy] = agent.proxy_response_headers
 
                 if proxy in self._proxy_headers_by_proxy:
-                    response.headers.update(self._proxy_headers_by_proxy[proxy])
+                    merge_proxy_response_headers(
+                        response,
+                        self._proxy_headers_by_proxy[proxy],
+                        request=request,
+                    )
 
                 return response
 

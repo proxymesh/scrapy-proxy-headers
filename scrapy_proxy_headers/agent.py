@@ -1,10 +1,141 @@
+from typing import Any, Mapping, Optional
 from urllib.parse import urlparse
 
+from scrapy import Request
 from scrapy.core.downloader.handlers import http11 as _http11
 from scrapy.http import Headers, Response
 from scrapy.utils.httpobj import urlparse_cached
 from scrapy.utils.python import to_bytes
 from scrapy.utils.url import add_http_if_no_scheme
+
+# CONNECT metadata must never impersonate origin HTTP semantics.
+_FORBIDDEN_CONNECT_HEADER_NAMES = frozenset(
+    name.encode("ascii")
+    for name in (
+        "set-cookie",
+        "set-cookie2",
+        "cookie",
+        "content-type",
+        "content-length",
+        "content-encoding",
+        "content-language",
+        "content-location",
+        "content-disposition",
+        "content-range",
+        "location",
+        "refresh",
+        "www-authenticate",
+        "authorization",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "cache-control",
+        "expires",
+        "etag",
+        "last-modified",
+        "age",
+        "vary",
+        "pragma",
+        "date",
+        "referer",
+        "referrer-policy",
+        "strict-transport-security",
+        "content-security-policy",
+        "content-security-policy-report-only",
+        "x-frame-options",
+        "x-content-type-options",
+        "x-xss-protection",
+        "access-control-allow-origin",
+        "access-control-allow-credentials",
+        "access-control-allow-headers",
+        "access-control-allow-methods",
+        "access-control-expose-headers",
+        "access-control-max-age",
+        "link",
+        "alt-svc",
+        "clear-site-data",
+        "permissions-policy",
+        "host",
+        "connection",
+        "keep-alive",
+        "transfer-encoding",
+        "te",
+        "trailer",
+        "upgrade",
+        "server",
+    )
+)
+
+
+def _contains_ctl_or_newline(raw: bytes) -> bool:
+    return b"\r" in raw or b"\n" in raw or b"\x00" in raw
+
+
+def _header_name_bytes(name: Any) -> bytes:
+    """Return a CONNECT header name, rejecting CR/LF/NUL, spaces, and colons."""
+    raw = to_bytes(name)
+    if not raw or _contains_ctl_or_newline(raw) or b":" in raw or b" " in raw or b"\t" in raw:
+        raise ValueError("Invalid CONNECT header name")
+    return raw
+
+
+def _header_value_bytes(value: Any) -> bytes:
+    """Return a CONNECT header value, rejecting CR/LF/NUL."""
+    raw = to_bytes(value)
+    if _contains_ctl_or_newline(raw):
+        raise ValueError("Invalid CONNECT header value")
+    return raw
+
+
+def parse_connect_response_headers(data: bytes) -> Headers:
+    """Parse headers from a CONNECT response, stopping at the header terminator.
+
+    Bytes after the first ``\\r\\n\\r\\n`` are ignored so TLS or body data cannot
+    be interpreted as headers.
+    """
+    header_block = data.split(b"\r\n\r\n", 1)[0]
+    parsed = {}
+    for line in header_block.split(b"\r\n"):
+        if b":" not in line:
+            continue
+        name, value = line.split(b":", 1)
+        name = name.strip()
+        value = value.strip()
+        if not name or b" " in name or _contains_ctl_or_newline(name):
+            continue
+        if _contains_ctl_or_newline(value):
+            continue
+        parsed[name] = value
+    return Headers(parsed)
+
+
+def _is_forbidden_connect_header(name: Any) -> bool:
+    return to_bytes(name).lower() in _FORBIDDEN_CONNECT_HEADER_NAMES
+
+
+def merge_proxy_response_headers(
+    response: Response,
+    proxy_headers: Headers,
+    request: Optional[Request] = None,
+) -> None:
+    """Expose CONNECT headers without letting them impersonate the origin.
+
+    All parsed CONNECT headers are stored on
+    ``request.meta['proxy_response_headers']`` (and therefore
+    ``response.meta`` once the engine attaches the request). Only headers
+    that are not origin-semantic and not already present on the HTTPS
+    response are copied into ``response.headers``, so values such as
+    ``X-ProxyMesh-IP`` remain available to spiders.
+    """
+    stored = Headers(proxy_headers)
+    meta_owner = request if request is not None else getattr(response, "request", None)
+    if meta_owner is not None:
+        meta_owner.meta["proxy_response_headers"] = stored
+    for name in stored.keys():
+        if _is_forbidden_connect_header(name):
+            continue
+        if name in response.headers:
+            continue
+        response.headers.setlist(name, stored.getlist(name))
 
 # Scrapy 2.18 made these HTTP11 internals private (leading underscore).
 TunnelingTCP4ClientEndpoint = getattr(
@@ -28,12 +159,18 @@ def tunnel_request_data_with_headers(host: str, port: int, **proxy_headers) -> b
     >>> s(tunnel_request_data_with_headers(b"example.com", "8090"))
     'CONNECT example.com:8090 HTTP/1.1\r\nHost: example.com:8090\r\n\r\n'
     """
-    host_value = to_bytes(host, encoding="ascii") + b":" + to_bytes(str(port))
+    host_b = to_bytes(host, encoding="ascii")
+    port_b = to_bytes(str(port), encoding="ascii")
+    if not host_b or _contains_ctl_or_newline(host_b) or b" " in host_b:
+        raise ValueError("Invalid CONNECT host")
+    if not port_b or _contains_ctl_or_newline(port_b) or b" " in port_b:
+        raise ValueError("Invalid CONNECT port")
+    host_value = host_b + b":" + port_b
     tunnel_req = b"CONNECT " + host_value + b" HTTP/1.1\r\n"
     tunnel_req += b"Host: " + host_value + b"\r\n"
 
     for key, val in proxy_headers.items():
-        tunnel_req += to_bytes(key) + b": " + to_bytes(val) + b"\r\n"
+        tunnel_req += _header_name_bytes(key) + b": " + _header_value_bytes(val) + b"\r\n"
 
     tunnel_req += b"\r\n"
     return tunnel_req
@@ -49,14 +186,15 @@ class TunnelingHeadersTCP4ClientEndpoint(TunnelingTCP4ClientEndpoint):
         contextFactory,
         timeout: float = 30,
         bindAddress=None,
-        **proxy_headers
+        proxy_headers: Optional[Mapping[Any, Any]] = None,
     ):
         super().__init__(reactor, host, port, proxyConf, contextFactory, timeout, bindAddress)
 
         self._proxy_headers = {}
         if self._proxyAuthHeader:
-            self._proxy_headers['Proxy-Authorization'] = self._proxyAuthHeader
-        self._proxy_headers.update(proxy_headers)
+            self._proxy_headers["Proxy-Authorization"] = self._proxyAuthHeader
+        if proxy_headers:
+            self._proxy_headers.update(proxy_headers)
 
     def requestTunnel(self, protocol):
         """Asks the proxy to open a tunnel."""
@@ -73,14 +211,7 @@ class TunnelingHeadersTCP4ClientEndpoint(TunnelingTCP4ClientEndpoint):
     def processProxyResponse(self, data: bytes):
         # data might have proxy headers, looks like
         # b'HTTP/1.1 200 Connection established\r\nProxy-Header: VALUE\r\n\r\n'
-        response_headers = {}
-
-        for line in data.split(b'\r\n'):
-            if b':' in line:
-                key, val = line.split(b':', 1)
-                response_headers[key.strip()] = val.strip()
-        # save for endpoing & agent
-        self._proxy_response_headers = Headers(response_headers)
+        self._proxy_response_headers = parse_connect_response_headers(data)
         return super(TunnelingHeadersTCP4ClientEndpoint, self).processProxyResponse(data)
 
 
@@ -95,7 +226,7 @@ class TunnelingHeadersAgent(TunnelingAgent):
         super().__init__(*args, **kwargs)
         self._proxy_headers = {}
 
-    def set_proxy_headers(self, proxy_headers):
+    def set_proxy_headers(self, proxy_headers: Mapping[Any, Any]) -> None:
         self._proxy_headers = proxy_headers
 
     def _getEndpoint(self, uri):
@@ -108,7 +239,7 @@ class TunnelingHeadersAgent(TunnelingAgent):
             contextFactory=self._contextFactory,
             timeout=self._endpointFactory._connectTimeout,
             bindAddress=self._endpointFactory._bindAddress,
-            **self._proxy_headers
+            proxy_headers=self._proxy_headers,
         )
         return self._endpoint
 
@@ -172,6 +303,6 @@ class ScrapyProxyHeadersAgent(ScrapyAgent):
             if self._agent and hasattr(self._agent, '_endpoint'):
                 proxy_response_headers = getattr(self._agent._endpoint, '_proxy_response_headers', None)
                 if proxy_response_headers:
-                    r.headers.update(proxy_response_headers)
                     self.proxy_response_headers = proxy_response_headers
+                    merge_proxy_response_headers(r, proxy_response_headers)
         return r
