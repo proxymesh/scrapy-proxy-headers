@@ -63,7 +63,7 @@ class MySpider(scrapy.Spider):
 
 ## Receiving Proxy Response Headers
 
-Proxy-specific CONNECT headers such as `X-ProxyMesh-IP` are copied into `response.headers`. Origin-semantic CONNECT headers are not. The full CONNECT set is on `response.meta["proxy_response_headers"]`:
+Headers from the proxy's CONNECT response are merged into `response.headers`. Headers the origin already sent are left unchanged.
 
 ```python
 def parse(self, response):

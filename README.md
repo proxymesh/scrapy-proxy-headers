@@ -79,7 +79,7 @@ class MySpider(scrapy.Spider):
 
 ### 3. Receive Proxy Response Headers
 
-Proxy-specific CONNECT headers such as `X-ProxyMesh-IP` are copied into `response.headers` when they do not collide with origin headers. Origin-semantic fields (for example `Set-Cookie`, `Content-Type`, `Location`) are never copied from CONNECT. The full CONNECT header set is available on `response.meta["proxy_response_headers"]`.
+Headers from the proxy's CONNECT response are merged into `response.headers`. Headers the origin already sent are left unchanged.
 
 ```python
 def parse(self, response):
@@ -87,7 +87,6 @@ def parse(self, response):
     proxy_ip = response.headers.get(b"X-ProxyMesh-IP")
     if proxy_ip:
         print(f"Request made through IP: {proxy_ip.decode()}")
-    connect_headers = response.meta.get("proxy_response_headers")
 ```
 
 ## Complete Example
