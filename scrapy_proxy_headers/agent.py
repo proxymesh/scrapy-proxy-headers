@@ -33,10 +33,21 @@ def tunnel_request_data_with_headers(host: str, port: int, **proxy_headers) -> b
     tunnel_req += b"Host: " + host_value + b"\r\n"
 
     for key, val in proxy_headers.items():
-        tunnel_req += to_bytes(key) + b": " + to_bytes(val) + b"\r\n"
+        key_b = to_bytes(key)
+        val_b = to_bytes(val)
+        if b"\r" in key_b or b"\n" in key_b or b"\r" in val_b or b"\n" in val_b:
+            raise ValueError("proxy header contains CR or LF")
+        tunnel_req += key_b + b": " + val_b + b"\r\n"
 
     tunnel_req += b"\r\n"
     return tunnel_req
+
+
+def _merge_proxy_headers(response: Response, proxy_headers: Headers) -> None:
+    """Copy CONNECT headers that the origin response does not already have."""
+    for name in proxy_headers:
+        if name not in response.headers:
+            response.headers.setlist(name, proxy_headers.getlist(name))
 
 
 class TunnelingHeadersTCP4ClientEndpoint(TunnelingTCP4ClientEndpoint):
@@ -71,17 +82,19 @@ class TunnelingHeadersTCP4ClientEndpoint(TunnelingTCP4ClientEndpoint):
         return protocol
 
     def processProxyResponse(self, data: bytes):
-        # data might have proxy headers, looks like
-        # b'HTTP/1.1 200 Connection established\r\nProxy-Header: VALUE\r\n\r\n'
+        # Parent appends this chunk to _connectBuffer. Parse that buffer, not
+        # this chunk alone, and stop at the first header terminator.
+        result = super(TunnelingHeadersTCP4ClientEndpoint, self).processProxyResponse(data)
+        if b"\r\n\r\n" not in self._connectBuffer or hasattr(self, "_proxy_response_headers"):
+            return result
+        header_block = bytes(self._connectBuffer).split(b"\r\n\r\n", 1)[0]
         response_headers = {}
-
-        for line in data.split(b'\r\n'):
-            if b':' in line:
-                key, val = line.split(b':', 1)
+        for line in header_block.split(b"\r\n"):
+            if b":" in line:
+                key, val = line.split(b":", 1)
                 response_headers[key.strip()] = val.strip()
-        # save for endpoing & agent
         self._proxy_response_headers = Headers(response_headers)
-        return super(TunnelingHeadersTCP4ClientEndpoint, self).processProxyResponse(data)
+        return result
 
 
 class TunnelingHeadersAgent(TunnelingAgent):
@@ -172,6 +185,6 @@ class ScrapyProxyHeadersAgent(ScrapyAgent):
             if self._agent and hasattr(self._agent, '_endpoint'):
                 proxy_response_headers = getattr(self._agent._endpoint, '_proxy_response_headers', None)
                 if proxy_response_headers:
-                    r.headers.update(proxy_response_headers)
+                    _merge_proxy_headers(r, proxy_response_headers)
                     self.proxy_response_headers = proxy_response_headers
         return r

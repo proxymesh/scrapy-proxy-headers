@@ -31,6 +31,9 @@ jobs:
           pip install -e .
           pip install -r requirements.txt
 
+      - name: Run header safety unit tests
+        run: python test_header_safety.py
+
       - name: Require PROXY_URL Actions secret
         env:
           PROXY_URL: ${{ secrets.PROXY_URL }}

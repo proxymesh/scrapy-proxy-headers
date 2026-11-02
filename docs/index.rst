@@ -83,7 +83,7 @@ When you want to make a request with a custom proxy header, instead of using ``r
 Receiving Proxy Response Headers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Any response headers that come from the proxy will be available in ``response.headers``:
+Proxy CONNECT headers are copied into ``response.headers``. Headers the origin already sent are left unchanged.
 
 .. code-block:: python
 

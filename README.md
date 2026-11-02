@@ -79,7 +79,7 @@ class MySpider(scrapy.Spider):
 
 ### 3. Receive Proxy Response Headers
 
-Headers from the proxy's CONNECT response are automatically merged into `response.headers`:
+Headers from the proxy's CONNECT response are merged into `response.headers`. Headers the origin already sent are left unchanged.
 
 ```python
 def parse(self, response):

@@ -1,6 +1,6 @@
 from scrapy.core.downloader.handlers.http11 import HTTP11DownloadHandler
 from scrapy.utils.defer import maybe_deferred_to_future
-from scrapy_proxy_headers.agent import ScrapyProxyHeadersAgent
+from scrapy_proxy_headers.agent import ScrapyProxyHeadersAgent, _merge_proxy_headers
 
 
 class HTTP11ProxyDownloadHandler(HTTP11DownloadHandler):
@@ -39,7 +39,7 @@ class HTTP11ProxyDownloadHandler(HTTP11DownloadHandler):
                     self._proxy_headers_by_proxy[proxy] = agent.proxy_response_headers
 
                 if proxy in self._proxy_headers_by_proxy:
-                    response.headers.update(self._proxy_headers_by_proxy[proxy])
+                    _merge_proxy_headers(response, self._proxy_headers_by_proxy[proxy])
 
                 return response
 
