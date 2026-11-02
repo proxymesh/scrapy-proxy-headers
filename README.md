@@ -180,7 +180,7 @@ Full documentation is available at [scrapy-proxy-headers.readthedocs.io](https:/
 ## Requirements
 
 - Python 3.8+
-- Scrapy 2.14.2+
+- Scrapy 2.17.0+
 
 ## License
 
