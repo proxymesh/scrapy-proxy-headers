@@ -11,6 +11,7 @@
 
 ### Changed
 
+- Require Scrapy >=2.17.0,<2.20. Scrapy 2.20.0 (2026-11-06) removed `_TunnelingTCP4ClientEndpoint`, which this release still imports. Native `proxy_headers` support is not part of 0.2.2.
 - Run `test_header_safety.py` in the proxy integration job (#18).
 - Document that CONNECT headers do not overwrite headers the origin already sent.
 - Pin GitHub Actions jobs to `ubuntu-24.04` (#15).
