@@ -1,5 +1,4 @@
-# A push to main from a merged release/X.Y.Z pull request publishes to PyPI
-# and opens the GitHub Release. Any other push skips both jobs' work.
+# push to main: publish when the commit is a merged release/X.Y.Z pull request.
 
 name: Publish to PyPI
 
@@ -11,7 +10,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: pypi-publish
+  group: pypi-publish-${{ github.ref }}
   cancel-in-progress: false
 
 defaults:
@@ -19,75 +18,92 @@ defaults:
     shell: bash
 
 jobs:
-  publish:
-    name: Publish to PyPI
+  lookup:
+    name: Lookup
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
     permissions:
-      contents: read # checkout the release commit
-      id-token: write # PyPI trusted publishing
-      pull-requests: read # find the pull request for this commit
-    environment:
-      name: release
-      url: https://pypi.org/p/scrapy-proxy-headers
+      contents: read # read this commit
+      pull-requests: read # list the pull request for this commit
     outputs:
-      version: ${{ steps.rel.outputs.version }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       - name: Find the release pull request
-        id: rel
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          ref="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
-            --jq '[.[] | select(.head.ref != null and (.head.ref | startswith("release/")))][0].head.ref // ""')"
-          version="${ref#release/}"
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          pulls=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls")
+          mapfile -t refs < <(
+            jq -r --arg repo "$GITHUB_REPOSITORY" '
+              .[]
+              | select(
+                  .base.ref == "main"
+                  and .merged_at != null
+                  and (.head.ref | startswith("release/"))
+                  and .head.repo.full_name == $repo
+                )
+              | .head.ref
+            ' <<<"$pulls"
+          )
+          if [ "${#refs[@]}" -eq 0 ]; then
             echo "Not a release merge."
-            version=""
+            exit 0
           fi
+          if [ "${#refs[@]}" -ne 1 ]; then
+            echo "This commit matches more than one release pull request." >&2
+            exit 1
+          fi
+          version="${refs[0]#release/}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout
-        if: steps.rel.outputs.version != ''
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  publish:
+    name: Publish to PyPI
+    needs: lookup
+    if: needs.lookup.outputs.version != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: release
+      url: https://pypi.org/p/scrapy-proxy-headers
+    permissions:
+      contents: read # checkout the release commit
+      id-token: write # PyPI trusted publishing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Set up Python
-        if: steps.rel.outputs.version != ''
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
 
-      - name: Check version and build
-        if: steps.rel.outputs.version != ''
+      - name: Check version and changelog
         env:
-          VERSION: ${{ steps.rel.outputs.version }}
+          HEAD_REF: release/${{ needs.lookup.outputs.version }}
+        run: python .github/scripts/release_lib.py check
+
+      - name: Build sdist and wheel
         run: |
-          set -euo pipefail
-          python scripts/release_version.py check --version "$VERSION"
           python -m pip install --upgrade pip
           python -m pip install build
           python -m build
 
       - name: Publish to PyPI
-        if: steps.rel.outputs.version != ''
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
   github-release:
     name: GitHub release
-    needs: publish
-    if: >-
-      needs.publish.result == 'success' &&
-      needs.publish.outputs.version != ''
+    needs: lookup
+    if: needs.lookup.outputs.version != ''
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: write # create the tag and GitHub Release
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -96,17 +112,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Create the GitHub release
+      - name: Create GitHub Release
         env:
-          VERSION: ${{ needs.publish.outputs.version }}
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.lookup.outputs.version }}
         run: |
           set -euo pipefail
-          python scripts/release_version.py notes \
-            --version "$VERSION" > "$RUNNER_TEMP/notes.md"
-          gh release view "v${VERSION}" --repo "$GITHUB_REPOSITORY" \
+          python .github/scripts/release_lib.py notes > "$RUNNER_TEMP/notes.md"
+          gh release view "v${VERSION}" \
             || gh release create "v${VERSION}" \
-              --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "v${VERSION}" \
               --notes-file "$RUNNER_TEMP/notes.md"

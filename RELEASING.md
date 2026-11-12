@@ -4,53 +4,50 @@ Merging a pull request from `release/X.Y.Z` into `main` publishes the package an
 
 ## Cut a release
 
-1. Write the changes under `## Unreleased` in `CHANGELOG.md`. `## [Unreleased]` is also accepted.
-2. In GitHub, open Actions → **Prepare release** → Run workflow, from `main`.
-3. Set the version input to `X.Y.Z`, `patch`, `minor`, or `major`.
-4. The workflow bumps the version manifests, moves that section to `## X.Y.Z - YYYY-MM-DD`, and opens a pull request titled `Release X.Y.Z`. Review it and merge it.
+1. On `main`, write the notes under `## Unreleased` in `CHANGELOG.md` and merge them.
+2. Actions → **Prepare release** → **Run workflow** on `main`.
+3. Set **version** to `X.Y.Z`, or to `patch`, `minor`, or `major`.
+4. The workflow bumps `pyproject.toml` and `docs/conf.py`, moves Unreleased to `## X.Y.Z - YYYY-MM-DD`, runs the release checks, and builds the sdist and wheel. It then opens a pull request titled `Release X.Y.Z` from `release/X.Y.Z`. The body is that changelog section.
+5. Merge the pull request into `main`.
 
-Version manifests are `pyproject.toml` `[project].version` and `docs/conf.py` `release`.
-
-The same pull request can be opened by hand:
-
-```bash
-version="$(python scripts/release_version.py prepare --spec patch --notes-file /tmp/release-notes.md)"
-git switch -c "release/${version}"
-git add -- pyproject.toml docs/conf.py CHANGELOG.md
-git commit -m "chore: prepare release ${version}"
-git push -u origin "HEAD:release/${version}"
-gh pr create --base main --head "release/${version}" \
-  --title "Release ${version}" --body-file /tmp/release-notes.md
-```
-
-Do not enable auto-merge. If the changelog has no Unreleased section, the new notes are empty; add them on the release branch before merging.
+A pull request opened with `GITHUB_TOKEN` does not start `pull_request` workflows, so Prepare release runs the checks before it pushes. A release pull request opened by hand uses the same publish path: branch `release/X.Y.Z`, both version manifests, and a dated changelog section.
 
 ## What runs
 
 ### Prepare release
 
-`workflow_dispatch` on `.github/workflows/prepare-release.yml`. Before it pushes, it checks that both manifests and a dated changelog section name the new version, and it builds the sdist and wheel. It does not publish.
+`.github/workflows/prepare-release.yml` on `workflow_dispatch`, from `main`, runner `ubuntu-24.04`.
 
-GitHub does not start `pull_request` workflows for a pull request that the Actions token opened, so this job is the check for that pull request.
+Version manifests:
+
+- `pyproject.toml` field `version`
+- `docs/conf.py` field `release`
+
+The Unreleased section must already contain the notes. The script does not invent an empty section.
 
 ### Release check
 
-On every pull request into `main`, `.github/workflows/release-check.yml` runs the same version and changelog check and builds the package. A `release/X.Y.Z` head must have a dated section. Other branches only need the two manifests to match.
+`.github/workflows/release-check.yml` runs on pull requests to `main`. It checks that the version manifests match and that `CHANGELOG.md` has `## X.Y.Z - YYYY-MM-DD` for that version. A `release/*` branch name must match the version. It builds the sdist and wheel.
 
-A dated section is `## X.Y.Z - YYYY-MM-DD`. An existing heading such as `## [0.2.2] - 2026-11-09` also counts.
+Don't make Release check a required check: release PRs are opened with GITHUB_TOKEN, so it doesn't run on them unless you close and reopen the PR.
 
 ### Publish
 
-A push to `main` runs `.github/workflows/publish.yml`. It asks GitHub which pull request merged as that commit (`gh api repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls`). Any other push skips the upload. A `release/X.Y.Z` merge builds the package and publishes with PyPI trusted publishing. The publish job uses the `release` environment and cannot push tags. PyPI rejects a version that is already there. The next job creates tag `vX.Y.Z` and the GitHub Release from the changelog section (`gh release view` or `gh release create`).
+A push to `main` runs `.github/workflows/publish.yml`. The **lookup** job reads the pull request for that commit (`merged_at` set, base `main`, same repository, head `release/X.Y.Z`). Any other push leaves the version output empty. The **publish** job then builds the package and uploads it to PyPI with trusted publishing (OIDC) in the GitHub environment `release`. A version that is already on PyPI fails the upload. The **github-release** job runs `gh release view vX.Y.Z` or creates that release on `$GITHUB_SHA` with title `vX.Y.Z`. The notes are the changelog section.
 
 ## One-time owner setup
 
-1. Create a GitHub environment named `release` (Settings → Environments). No secrets. Leave required reviewers off: this job starts on every push to `main` and exits before building when the commit is not a release merge.
-2. On PyPI, for `scrapy-proxy-headers`, set the trusted publisher to owner `proxymesh`, repository `scrapy-proxy-headers`, workflow `publish.yml`, and environment `release`. The previous environment name was `pypi`.
-3. Allow GitHub Actions to create pull requests (Settings → Actions → General → Workflow permissions). Dependabot auto-merge already needs this.
-4. After one publish through `release` succeeds, delete the old `pypi` and `testpypi` environments if nothing else uses them. Delete a leftover PyPI token secret if one is stored. This flow does not use one.
-5. Optional: require the **Release check** status check on `main`.
+Do this before the next `release/*` merge. This change does not edit repository or PyPI settings.
+
+1. Create a GitHub environment named `release` (Settings → Environments). Optional: required reviewers. It is used only when lookup finds a release merge.
+2. On PyPI, add a trusted publisher for scrapy-proxy-headers:
+   - Owner: `proxymesh`
+   - Repository: `scrapy-proxy-headers`
+   - Workflow: `publish.yml`
+   - Environment: `release`
+3. Allow GitHub Actions to create pull requests (Settings → Actions → General → Workflow permissions). Dependabot auto-merge already needs that.
+4. After the first release through `release` succeeds, delete the old `pypi` and `testpypi` environments, and delete any PyPI token secret stored on the repository or those environments.
 
 ## Tags
 
-Tags are `vX.Y.Z`. Existing tags already use that form (`v0.1.2` through `v0.2.2`) and are left as they are.
+Tags are `vX.Y.Z`. Existing tags `v0.1.2` through `v0.2.2` already use that form and stay as they are.

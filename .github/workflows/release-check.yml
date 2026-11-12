@@ -21,7 +21,7 @@ jobs:
   check:
     name: Release check
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
     permissions:
       contents: read # checkout the pull request
     steps:
@@ -35,14 +35,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Test the release script
+        run: python .github/scripts/test_release_lib.py
+
       - name: Check version and changelog
-        env:
-          RELEASE_BRANCH: ${{ github.head_ref }}
-        run: python scripts/release_version.py check --branch "$RELEASE_BRANCH"
+        run: python .github/scripts/release_lib.py check
 
       - name: Build sdist and wheel
         run: |
-          set -euo pipefail
           python -m pip install --upgrade pip
           python -m pip install build
           python -m build

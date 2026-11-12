@@ -1,4 +1,6 @@
-# Bump the version manifests, move CHANGELOG Unreleased, and open a release PR.
+# Open a release/X.Y.Z pull request from main.
+# A pull request opened with GITHUB_TOKEN does not run pull_request workflows,
+# so this job runs the release checks before it pushes.
 
 name: Prepare release
 
@@ -6,15 +8,15 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version X.Y.Z, or patch, minor, or major"
+        description: "X.Y.Z, or patch, minor, or major"
         required: true
         type: string
+
+permissions: {}
 
 concurrency:
   group: prepare-release
   cancel-in-progress: false
-
-permissions: {}
 
 defaults:
   run:
@@ -24,18 +26,15 @@ jobs:
   prepare:
     name: Prepare release
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
     permissions:
       contents: write # push the release branch
       pull-requests: write # open the release pull request
     steps:
-      - name: Require the main branch
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
-            echo "Run Prepare release from main." >&2
-            exit 1
-          fi
+      - name: Require main
+        env:
+          REF: ${{ github.ref }}
+        run: test "$REF" = "refs/heads/main"
 
       - name: Checkout main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,53 +48,38 @@ jobs:
           python-version: "3.12"
 
       - name: Bump version and changelog
-        id: prep
+        id: bump
         env:
-          RELEASE_SPEC: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          version="$(python scripts/release_version.py prepare \
-            --spec "$RELEASE_SPEC" \
-            --notes-file "$RUNNER_TEMP/notes.md")"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          VERSION_INPUT: ${{ inputs.version }}
+          NOTES_FILE: ${{ runner.temp }}/release-notes.md
+        run: python .github/scripts/release_lib.py bump
 
-      - name: Refuse an existing release branch
-        env:
-          VERSION: ${{ steps.prep.outputs.version }}
-        run: |
-          set -euo pipefail
-          ref="refs/heads/release/${VERSION}"
-          if git ls-remote --exit-code origin "$ref" >/dev/null 2>&1; then
-            echo "Branch release/${VERSION} already exists." >&2
-            exit 1
-          fi
+      - name: Check version and changelog
+        run: python .github/scripts/release_lib.py check
 
-      - name: Check version and build
-        env:
-          VERSION: ${{ steps.prep.outputs.version }}
+      - name: Build sdist and wheel
         run: |
-          set -euo pipefail
-          python scripts/release_version.py check --version "$VERSION"
           python -m pip install --upgrade pip
           python -m pip install build
           python -m build
 
       - name: Open the release pull request
         env:
-          VERSION: ${{ steps.prep.outputs.version }}
           GH_TOKEN: ${{ github.token }}
+          NOTES_FILE: ${{ runner.temp }}/release-notes.md
+          VERSION: ${{ steps.bump.outputs.version }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email \
-            "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "release/${VERSION}"
+          branch="release/${VERSION}"
+          git checkout -b "$branch"
           git add -- pyproject.toml docs/conf.py CHANGELOG.md
-          git commit -m "chore: prepare release ${VERSION}"
-          git push origin "HEAD:release/${VERSION}"
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "chore: bump version to ${VERSION}"
+          git push origin "HEAD:refs/heads/${branch}"
           gh pr create \
             --repo "$GITHUB_REPOSITORY" \
             --base main \
-            --head "release/${VERSION}" \
+            --head "$branch" \
             --title "Release ${VERSION}" \
-            --body-file "$RUNNER_TEMP/notes.md"
+            --body-file "$NOTES_FILE"
