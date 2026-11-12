@@ -5,15 +5,16 @@ import unittest
 
 from scrapy.http import Headers, Response
 
-from scrapy_proxy_headers.agent import (
-    TunnelingHeadersTCP4ClientEndpoint,
-    _merge_proxy_headers,
+from scrapy_proxy_headers import PROXY_HEADERS_MODE
+from scrapy_proxy_headers.connect import (
+    merge_proxy_response_headers,
+    parse_connect_response_headers,
     tunnel_request_data_with_headers,
 )
 
 
 class ConnectHeaderTests(unittest.TestCase):
-    def test_crlf_in_proxy_header_is_rejected(self):
+    def test_crlf_in_proxy_header_is_rejected(self) -> None:
         payload = tunnel_request_data_with_headers(
             "example.com", 443, **{"X-ProxyMesh-Country": "US"}
         )
@@ -30,8 +31,50 @@ class ConnectHeaderTests(unittest.TestCase):
                 "example.com", 443, **{"X-Good\r\nX-Injected": "1"}
             )
 
-    def test_split_chunks_reassemble_headers_and_stop_at_terminator(self):
-        endpoint = self._endpoint()
+    def test_split_chunks_reassemble_headers_and_stop_at_terminator(self) -> None:
+        if PROXY_HEADERS_MODE == "legacy":
+            self._assert_legacy_endpoint_reassembles()
+            return
+        buf = b""
+        buf += (
+            b"HTTP/1.1 200 Connection established\r\n"
+            b"X-ProxyMesh-IP: 203.0.113.9\r\n"
+        )
+        self.assertNotIn(b"\r\n\r\n", buf)
+        buf += b"X-ProxyMesh-Country: US\r\n\r\nX-Injected: from-body\r\n"
+        header_block = buf.split(b"\r\n\r\n", 1)[0]
+        headers = parse_connect_response_headers(header_block)
+        self.assertEqual(headers.get(b"X-ProxyMesh-IP"), b"203.0.113.9")
+        self.assertEqual(headers.get(b"X-ProxyMesh-Country"), b"US")
+        self.assertIsNone(headers.get(b"X-Injected"))
+
+    def test_origin_headers_are_not_overwritten(self) -> None:
+        response = Response(
+            url="https://example.com/",
+            headers={
+                b"Content-Type": b"text/html",
+                b"Set-Cookie": b"session=origin",
+            },
+            body=b"ok",
+        )
+        merge_proxy_response_headers(
+            response,
+            Headers(
+                {
+                    b"Content-Type": b"text/attacker",
+                    b"Set-Cookie": b"session=proxy",
+                    b"X-ProxyMesh-IP": b"203.0.113.9",
+                }
+            ),
+        )
+        self.assertEqual(response.headers.get(b"Content-Type"), b"text/html")
+        self.assertEqual(response.headers.get(b"Set-Cookie"), b"session=origin")
+        self.assertEqual(response.headers.get(b"X-ProxyMesh-IP"), b"203.0.113.9")
+
+    def _assert_legacy_endpoint_reassembles(self) -> None:
+        from scrapy_proxy_headers.legacy import TunnelingHeadersTCP4ClientEndpoint
+
+        endpoint = self._endpoint(TunnelingHeadersTCP4ClientEndpoint)
         endpoint.processProxyResponse(
             b"HTTP/1.1 200 Connection established\r\n"
             b"X-ProxyMesh-IP: 203.0.113.9\r\n"
@@ -48,49 +91,26 @@ class ConnectHeaderTests(unittest.TestCase):
         self.assertEqual(headers.get(b"X-ProxyMesh-Country"), b"US")
         self.assertIsNone(headers.get(b"X-Injected"))
 
-    def test_origin_headers_are_not_overwritten(self):
-        response = Response(
-            url="https://example.com/",
-            headers={
-                b"Content-Type": b"text/html",
-                b"Set-Cookie": b"session=origin",
-            },
-            body=b"ok",
-        )
-        _merge_proxy_headers(
-            response,
-            Headers(
-                {
-                    b"Content-Type": b"text/attacker",
-                    b"Set-Cookie": b"session=proxy",
-                    b"X-ProxyMesh-IP": b"203.0.113.9",
-                }
-            ),
-        )
-        self.assertEqual(response.headers.get(b"Content-Type"), b"text/html")
-        self.assertEqual(response.headers.get(b"Set-Cookie"), b"session=origin")
-        self.assertEqual(response.headers.get(b"X-ProxyMesh-IP"), b"203.0.113.9")
-
-    def _endpoint(self):
+    def _endpoint(self, endpoint_cls: type) -> object:
         class Transport:
-            def startTLS(self, *args, **kwargs):
+            def startTLS(self, *args: object, **kwargs: object) -> None:
                 return None
 
-            def write(self, data):
+            def write(self, data: bytes) -> None:
                 return None
 
         class Protocol:
-            def __init__(self):
+            def __init__(self) -> None:
                 self.transport = Transport()
 
-            def dataReceived(self, data):
+            def dataReceived(self, data: bytes) -> None:
                 return None
 
         class ContextFactory:
-            def creatorForNetloc(self, host, port):
+            def creatorForNetloc(self, host: str, port: int) -> object:
                 return object()
 
-        endpoint = TunnelingHeadersTCP4ClientEndpoint(
+        endpoint = endpoint_cls(
             reactor=None,
             host="example.com",
             port=443,

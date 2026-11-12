@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+The version in `pyproject.toml` is 0.3.0. The release date is chosen when this is published.
+
+### Added
+
+- On Scrapy 2.20.0 and newer, detect native `request.meta["proxy_headers"]` support and let Scrapy send those CONNECT headers. This package does not send them again. It copies the proxy's CONNECT response headers, such as `X-ProxyMesh-IP`, onto the Scrapy response.
+- `scrapy_proxy_headers.PROXY_HEADERS_MODE` is `native` when Scrapy provides `get_proxy_headers`, and `legacy` otherwise. It is not a Scrapy setting.
+- Cache CONNECT response headers by proxy URL and normalized `proxy_headers`, so a different header set does not reuse another set's `X-ProxyMesh-IP`.
+- On Scrapy 2.17 through 2.19, open a separate CONNECT tunnel for each `proxy_headers` set. Those releases otherwise pool tunnels by proxy host, port, and auth only.
+- Local tests that run a CONNECT proxy and an HTTPS target. CI checks Scrapy 2.17.0, 2.19.0, the latest PyPI release, and Scrapy master on Python 3.10 and 3.13.
+
+### Changed
+
+- Remove the Scrapy `<2.20` cap added in 0.2.2. Require Scrapy >=2.17.0 with no upper cap.
+- Require Python 3.10 or newer, matching Scrapy 2.17.0. Scrapy 2.20.0 and master require Python 3.11+.
+- Document `async def start()`. Scrapy 2.16 removed `start_requests()`.
+- Document that `X-ProxyMesh-Country` is only honored by some ProxyMesh proxies. See https://docs.proxymesh.com/.
+
 ## [0.2.2] - 2026-11-09
 
 ### Security

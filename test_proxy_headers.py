@@ -68,11 +68,7 @@ class ProxyHeaderTestSpider(scrapy.Spider):
         )
 
     async def start(self):
-        """Scrapy 2.13+ entrypoint; 2.18 removed start_requests()."""
-        yield self._start_request()
-
-    def start_requests(self):
-        """Kept for Scrapy < 2.18, which still calls start_requests()."""
+        """Scrapy 2.16 removed start_requests(); supported releases call start()."""
         yield self._start_request()
     
     def parse(self, response):
