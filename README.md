@@ -7,7 +7,7 @@
 
 ## The Problem
 
-When making HTTPS requests through a proxy, Scrapy cannot send custom headers to the proxy itself. This is because HTTPS requests create an encrypted tunnel (via HTTP CONNECT) - any headers you add to `request.headers` are encrypted and only visible to the destination server, not the proxy.
+When making HTTPS requests through a proxy, headers on `request.headers` go through the encrypted tunnel and the proxy does not see them. Through Scrapy 2.19, Scrapy also does not send custom headers on the CONNECT request. Scrapy 2.20.0 does. Either way, Scrapy does not keep the proxy's CONNECT response headers, such as `X-ProxyMesh-IP`.
 
 ```
 ┌──────────┐     CONNECT      ┌───────┐     Encrypted     ┌────────────┐
@@ -61,12 +61,12 @@ import scrapy
 
 class MySpider(scrapy.Spider):
     name = "example"
-    
-    def start_requests(self):
+
+    async def start(self):
         yield scrapy.Request(
             url="https://api.ipify.org?format=json",
             meta={
-                "proxy": "http://your-proxy:port",
+                "proxy": "http://world.proxymesh.com:31280",
                 "proxy_headers": {"X-ProxyMesh-Country": "US"}
             }
         )
@@ -76,6 +76,10 @@ class MySpider(scrapy.Spider):
         proxy_ip = response.headers.get("X-ProxyMesh-IP")
         self.logger.info(f"Proxy IP: {proxy_ip}")
 ```
+
+Use `async def start()`. Scrapy 2.16 removed `start_requests()`, so a spider that only defines `start_requests()` sends no requests on every Scrapy version this package supports (2.17 and newer).
+
+`X-ProxyMesh-Country` selects a country on the ProxyMesh World proxy (`world.proxymesh.com`) and the Open proxy (`open.proxymesh.com`). It does not apply to a single-country proxy such as `us.proxymesh.com`.
 
 ### 3. Receive Proxy Response Headers
 
@@ -87,6 +91,40 @@ def parse(self, response):
     proxy_ip = response.headers.get(b"X-ProxyMesh-IP")
     if proxy_ip:
         print(f"Request made through IP: {proxy_ip.decode()}")
+```
+
+## Scrapy 2.20.0+ / native proxy_headers
+
+Scrapy 2.20.0 (released 2026-11-06) is the first release with native `request.meta["proxy_headers"]` support ([#3329](https://github.com/scrapy/scrapy/issues/3329), [#7888](https://github.com/scrapy/scrapy/pull/7888)). It sends those headers to the proxy in `request.meta["proxy"]`, including on the HTTPS CONNECT request. Scrapy 2.20.0 requires Python 3.11 or newer.
+
+scrapy-proxy-headers 0.3.0 detects that support from Scrapy's features, not from the version string. On Scrapy 2.20.0 and newer, including master, `PROXY_HEADERS_MODE` is `"native"`: Scrapy sends `proxy_headers`, and this package does not send them again. It only copies the proxy's CONNECT response headers, such as `X-ProxyMesh-IP`, onto `response.headers`. On Scrapy 2.17.0 through 2.19.x the mode is `"legacy"` and this package still writes `proxy_headers` on CONNECT itself.
+
+Header-only users on Scrapy 2.20.0 and newer can drop the `DOWNLOAD_HANDLERS` override and keep the same meta value:
+
+```python
+yield scrapy.Request(
+    url="https://api.ipify.org?format=json",
+    meta={
+        "proxy": "http://world.proxymesh.com:31280",
+        "proxy_headers": {"X-ProxyMesh-Country": "US"},
+    },
+)
+```
+
+Scrapy reads the CONNECT status line and discards the rest of the proxy response headers. `X-ProxyMesh-IP` and other CONNECT response headers are still only available through this package. Keep the download handler when the spider reads them from `response.headers`:
+
+```python
+DOWNLOAD_HANDLERS = {
+    "https": "scrapy_proxy_headers.HTTP11ProxyDownloadHandler",
+}
+```
+
+`scrapy_proxy_headers.PROXY_HEADERS_MODE` is `"native"` or `"legacy"`. It is detected from the installed Scrapy. It is not a Scrapy setting. In native mode the captured CONNECT response is merged into the Scrapy response even when Scrapy reuses the tunnel.
+
+```python
+import scrapy_proxy_headers
+
+print(scrapy_proxy_headers.PROXY_HEADERS_MODE)
 ```
 
 ## Complete Example
@@ -103,11 +141,11 @@ class ProxyHeadersSpider(scrapy.Spider):
         }
     }
     
-    def start_requests(self):
+    async def start(self):
         yield scrapy.Request(
             url="https://api.ipify.org?format=json",
             meta={
-                "proxy": "http://us.proxymesh.com:31280",
+                "proxy": "http://world.proxymesh.com:31280",
                 "proxy_headers": {"X-ProxyMesh-Country": "US"}
             },
             callback=self.parse_ip
@@ -130,11 +168,12 @@ class ProxyHeadersSpider(scrapy.Spider):
 ## How It Works
 
 1. **HTTP11ProxyDownloadHandler** - Custom download handler that manages proxy header caching
-2. **ScrapyProxyHeadersAgent** - Agent that reads `proxy_headers` from request meta
-3. **TunnelingHeadersAgent** - Sends custom headers in the CONNECT request
-4. **TunnelingHeadersTCP4ClientEndpoint** - Captures proxy response headers from CONNECT response
+2. **Legacy path** (`PROXY_HEADERS_MODE == "legacy"`) - `ScrapyProxyHeadersAgent` reads `proxy_headers` and `TunnelingHeadersAgent` sends them on CONNECT
+3. **Native path** (`PROXY_HEADERS_MODE == "native"`) - Scrapy sends `proxy_headers`; the handler only records the CONNECT response
 
-The handler also caches proxy response headers by proxy URL. This ensures headers remain available even when Scrapy reuses existing tunnel connections for subsequent requests.
+On the legacy path, `TunnelingHeadersTCP4ClientEndpoint` captures proxy response headers from the CONNECT response. On the native path, a subclass of Scrapy's tunnel protocol does that capture.
+
+The handler caches proxy response headers by proxy URL and the normalized `proxy_headers` for that request. A reused tunnel still exposes the CONNECT response from the header set that opened it, and a different header set does not reuse another set's cached `X-ProxyMesh-IP`.
 
 ## Test Harness
 
@@ -178,8 +217,17 @@ Full documentation is available at [scrapy-proxy-headers.readthedocs.io](https:/
 
 ## Requirements
 
-- Python 3.8+
-- Scrapy >=2.17.0,<2.20
+- Python 3.10+
+- Scrapy 2.17.0+ (no upper cap). Native `proxy_headers` starts at Scrapy 2.20.0.
+
+Scrapy 2.17.0 and 2.18 support Python 3.10 through 3.14. Scrapy 2.19 and 2.20 also list 3.15. Scrapy 2.20.0 and Scrapy master require Python 3.11+.
+
+Local compatibility tests do not need a proxy account:
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
 
 ## License
 
