@@ -12,7 +12,9 @@ from scrapy.http import Headers, Response
 from scrapy.utils.python import to_bytes
 
 
-def tunnel_request_data_with_headers(host: str, port: int, **proxy_headers: Any) -> bytes:
+def tunnel_request_data_with_headers(
+    host: str, port: int, **proxy_headers: Any
+) -> bytes:
     r"""
     Return binary content of a CONNECT request.
 
@@ -65,7 +67,9 @@ def normalize_proxy_headers(
     if not proxy_headers:
         return ()
     pairs: list[tuple[str, str]] = []
-    items = proxy_headers.items() if isinstance(proxy_headers, Mapping) else proxy_headers
+    items = (
+        proxy_headers.items() if isinstance(proxy_headers, Mapping) else proxy_headers
+    )
     for key, value in items:
         name = _as_text(key).lower()
         values = value if isinstance(value, (list, tuple)) else (value,)

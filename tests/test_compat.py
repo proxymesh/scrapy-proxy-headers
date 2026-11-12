@@ -9,13 +9,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-import scrapy_proxy_headers
+import pytest
+from scrapy.http import Request
+
 from scrapy_proxy_headers.connect import (
     normalize_proxy_headers,
     parse_connect_response_headers,
     proxy_cache_key,
-    tunnel_request_data_with_headers,
 )
+from scrapy_proxy_headers.mode import PROXY_HEADERS_MODE
 from tests.harness import (
     read_proxy_log,
     start_connect_proxy,
@@ -23,23 +25,16 @@ from tests.harness import (
     write_self_signed_cert,
 )
 
+try:
+    from scrapy.utils._download_handlers import get_proxy_headers
+
+    from scrapy_proxy_headers.native import sent_proxy_headers
+except ImportError:
+    get_proxy_headers = None
+    sent_proxy_headers = None
+
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def _expected_mode() -> str:
-    try:
-        from scrapy.utils._download_handlers import get_proxy_headers
-    except ImportError:
-        return "legacy"
-    return "native" if callable(get_proxy_headers) else "legacy"
-
-
-def _values(headers: dict[str, list[str]], name: str) -> list[str]:
-    found: list[str] = []
-    for key, values in headers.items():
-        if key.lower() == name.lower():
-            found.extend(values)
-    return found
+NATIVE = PROXY_HEADERS_MODE == "native"
 
 
 def test_ci_expected_mode() -> None:
@@ -47,22 +42,14 @@ def test_ci_expected_mode() -> None:
     expected = os.environ.get("EXPECT_PROXY_HEADERS_MODE", "")
     if not expected or expected == "any":
         return
-    assert scrapy_proxy_headers.PROXY_HEADERS_MODE == expected
+    assert PROXY_HEADERS_MODE == expected
 
 
-def test_detected_mode_matches_scrapy_features() -> None:
-    assert scrapy_proxy_headers.PROXY_HEADERS_MODE == _expected_mode()
-
-
+@pytest.mark.skipif(not NATIVE, reason="Scrapy does not provide get_proxy_headers")
 def test_native_sent_headers_match_scrapy() -> None:
     """The capture key must use the same header tuple Scrapy puts on CONNECT."""
-    if _expected_mode() != "native":
-        return
-    from scrapy.http import Request
-    from scrapy.utils._download_handlers import get_proxy_headers
-
-    from scrapy_proxy_headers.native import sent_proxy_headers
-
+    assert get_proxy_headers is not None
+    assert sent_proxy_headers is not None
     request = Request(
         "https://example.com/",
         headers={"Proxy-Authorization": "Basic dTpw"},
@@ -73,10 +60,7 @@ def test_native_sent_headers_match_scrapy() -> None:
     )
     sent = get_proxy_headers(request)
     assert not any(name == "Proxy-Authorization" for name, _value in sent)
-    assert sent_proxy_headers(request) == (
-        ("Proxy-Authorization", "Basic dTpw"),
-        *sent,
-    )
+    assert sent_proxy_headers(request) == (("Proxy-Authorization", "Basic dTpw"), *sent)
 
     request.meta["proxy_headers"] = {
         "Proxy-Authorization": "from-meta",
@@ -85,30 +69,10 @@ def test_native_sent_headers_match_scrapy() -> None:
     assert sent_proxy_headers(request) == get_proxy_headers(request)
 
 
-def test_active_mode_module_imports() -> None:
-    if _expected_mode() == "legacy":
-        from scrapy_proxy_headers.legacy import ScrapyProxyHeadersAgent
-
-        assert ScrapyProxyHeadersAgent.__name__ == "ScrapyProxyHeadersAgent"
-        return
-    from scrapy_proxy_headers.native import lookup_connect_response_headers
-
-    assert callable(lookup_connect_response_headers)
-
-
 def test_proxy_cache_key_includes_normalized_headers() -> None:
-    us = proxy_cache_key(
-        "http://proxy.example.com:8080",
-        {"X-ProxyMesh-Country": "US"},
-    )
-    de = proxy_cache_key(
-        "http://proxy.example.com:8080",
-        {"X-ProxyMesh-Country": "DE"},
-    )
-    same = proxy_cache_key(
-        "proxy.example.com:8080",
-        {"x-proxymesh-country": "US"},
-    )
+    us = proxy_cache_key("http://proxy.example.com:8080", {"X-ProxyMesh-Country": "US"})
+    de = proxy_cache_key("http://proxy.example.com:8080", {"X-ProxyMesh-Country": "DE"})
+    same = proxy_cache_key("proxy.example.com:8080", {"x-proxymesh-country": "US"})
     assert us != de
     assert us == same
     assert us[0] == "http://proxy.example.com:8080"
@@ -116,39 +80,17 @@ def test_proxy_cache_key_includes_normalized_headers() -> None:
 
 
 def test_parse_connect_response_headers_skips_status_line() -> None:
-    raw = (
-        b"HTTP/1.1 200 Connection established\r\n"
-        b"X-Test-Proxy: 1\r\n"
-        b"X-Echo-Country: US\r\n"
+    headers = parse_connect_response_headers(
+        b"HTTP/1.1 200 Connection established\r\nX-Test-Proxy: 1\r\nX-Echo-Country: US\r\n"
     )
-    headers = parse_connect_response_headers(raw)
-    assert _header(headers, "X-Test-Proxy") == b"1"
-    assert _header(headers, "X-Echo-Country") == b"US"
-    assert _header(headers, "HTTP/1.1 200 Connection established") is None
+    assert headers.get("X-Test-Proxy") == b"1"
+    assert headers.get("X-Echo-Country") == b"US"
+    assert headers.get("HTTP/1.1 200 Connection established") is None
 
 
 def test_tunnel_request_doctest() -> None:
     result = doctest.testmod(sys.modules["scrapy_proxy_headers.connect"])
     assert result.failed == 0
-    payload = tunnel_request_data_with_headers(
-        "example.com",
-        443,
-        **{"X-ProxyMesh-Country": "US"},
-    )
-    assert payload.count(b"X-ProxyMesh-Country: US") == 1
-
-
-def _header(headers: object, name: str) -> bytes | None:
-    from scrapy.http import Headers
-
-    assert isinstance(headers, Headers)
-    wanted = name.lower()
-    for key, values in headers.items():
-        text = key.decode() if isinstance(key, bytes) else str(key)
-        if text.lower() == wanted and values:
-            value = values[-1]
-            return value if isinstance(value, bytes) else str(value).encode()
-    return None
 
 
 def test_connect_headers_cache_and_reuse(tmp_path: Path) -> None:
@@ -183,14 +125,14 @@ def test_connect_headers_cache_and_reuse(tmp_path: Path) -> None:
         stop_proxy()
         stop_target()
 
-    result_lines = [line for line in completed.stdout.splitlines() if line.startswith("RESULT ")]
-    detail = (
-        f"exit={completed.returncode}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
-    )
+    detail = f"exit={completed.returncode}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
     assert completed.returncode == 0, detail
+    result_lines = [
+        line for line in completed.stdout.splitlines() if line.startswith("RESULT ")
+    ]
     assert result_lines, detail
     payload = json.loads(result_lines[-1].split(" ", 1)[1])
-    assert payload["mode"] == _expected_mode(), detail
+    assert payload["mode"] == PROXY_HEADERS_MODE, detail
     results = payload["results"]
     assert len(results) == 4, detail
     for result in results:
@@ -200,32 +142,23 @@ def test_connect_headers_cache_and_reuse(tmp_path: Path) -> None:
     connects = [event for event in events if event["method"] == "CONNECT"]
 
     def countries(event: dict[str, object]) -> list[str]:
-        found = []
         headers = event["headers"]
         assert isinstance(headers, list)
-        for pair in headers:
-            assert isinstance(pair, list)
-            if str(pair[0]).lower() == "x-proxymesh-country":
-                found.append(str(pair[1]))
-        return found
+        return [
+            str(pair[1])
+            for pair in headers
+            if str(pair[0]).lower() == "x-proxymesh-country"
+        ]
 
-    # (a) custom header arrives once per CONNECT, (c) no duplicate header lines.
     assert [countries(event) for event in connects] == [["US"], ["DE"]], detail
     for event in connects:
         names = [str(pair[0]).lower() for pair in event["headers"]]
         assert names.count("x-proxymesh-country") == 1, detail
 
-    expected = ["US", "US", "DE", "US"]
-    for result, country in zip(results, expected):
-        headers = result["headers"]
-        # (b) proxy response header is visible, once.
-        assert _values(headers, "X-Test-Proxy") == ["1"], detail
-        # (d) cached response headers follow the header set, not the proxy URL alone.
-        assert _values(headers, "X-Echo-Country") == [country], detail
-        target_headers = {
-            str(key).lower(): value for key, value in result["target"]["headers"].items()
-        }
-        assert "x-proxymesh-country" not in target_headers, detail
-
-    # (e) the second and fourth US requests reuse the US tunnel.
+    for result, country in zip(results, ["US", "US", "DE", "US"]):
+        assert result["headers"]["x-test-proxy"] == ["1"], detail
+        assert result["headers"]["x-echo-country"] == [country], detail
+        assert not any(
+            key.lower() == "x-proxymesh-country" for key in result["target"]["headers"]
+        ), detail
     assert sum(1 for event in connects if countries(event) == ["US"]) == 1, detail

@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlparse
 
-import scrapy.core.downloader.handlers.http11 as http11
+from scrapy.core.downloader.handlers import http11
 from scrapy.core.downloader.handlers.http11 import _TunnelProtocol
 from scrapy.http import Headers
 from scrapy.utils._download_handlers import get_proxy_headers
@@ -34,12 +34,16 @@ class _CapturingTunnelProtocol(_TunnelProtocol):
         super().dataReceived(data)
         if was_ready or self._captured or not self._tunnelReady:
             return
-        header_block, separator, _rest = bytes(self._connectBuffer).partition(b"\r\n\r\n")
+        header_block, separator, _rest = bytes(self._connectBuffer).partition(
+            b"\r\n\r\n"
+        )
         if not separator:
             return
         self._captured = True
         headers = parse_connect_response_headers(header_block)
-        _CAPTURED[_capture_key(self._proxyHost, self._proxyPort, self._proxyHeaders)] = headers
+        _CAPTURED[
+            _capture_key(self._proxyHost, self._proxyPort, self._proxyHeaders)
+        ] = headers
 
 
 http11._TunnelProtocol = _CapturingTunnelProtocol

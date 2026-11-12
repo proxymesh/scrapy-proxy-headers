@@ -17,13 +17,7 @@ logger = logging.getLogger(__name__)
 if PROXY_HEADERS_MODE == "native":
     from .native import lookup_connect_response_headers
 else:
-    try:
-        from .legacy import ScrapyProxyHeadersAgent
-    except ImportError as exc:
-        raise ImportError(
-            "This Scrapy has neither native proxy_headers support nor the "
-            "2.17–2.19 tunnel classes (_TunnelingTCP4ClientEndpoint)."
-        ) from exc
+    from .legacy import ScrapyProxyHeadersAgent
 
 
 class HTTP11ProxyDownloadHandler(HTTP11DownloadHandler):

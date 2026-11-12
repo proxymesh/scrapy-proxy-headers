@@ -42,7 +42,9 @@ class TunnelingHeadersTCP4ClientEndpoint(_TunnelingTCP4ClientEndpoint):
         bindAddress: Any = None,
         **proxy_headers: Any,
     ) -> None:
-        super().__init__(reactor, host, port, proxyConf, contextFactory, timeout, bindAddress)
+        super().__init__(
+            reactor, host, port, proxyConf, contextFactory, timeout, bindAddress
+        )
         self._proxy_headers: dict[Any, Any] = {}
         if self._proxyAuthHeader:
             self._proxy_headers["Proxy-Authorization"] = self._proxyAuthHeader
@@ -66,7 +68,9 @@ class TunnelingHeadersTCP4ClientEndpoint(_TunnelingTCP4ClientEndpoint):
     def processProxyResponse(self, data: bytes) -> Any:
         """Parse the reassembled CONNECT response, stopping at the header end."""
         result = super().processProxyResponse(data)
-        if b"\r\n\r\n" not in self._connectBuffer or hasattr(self, "_proxy_response_headers"):
+        if b"\r\n\r\n" not in self._connectBuffer or hasattr(
+            self, "_proxy_response_headers"
+        ):
             return result
         header_block = bytes(self._connectBuffer).split(b"\r\n\r\n", 1)[0]
         self._proxy_response_headers = parse_connect_response_headers(header_block)
@@ -134,12 +138,12 @@ class ScrapyProxyHeadersAgent(_ScrapyAgent):
         proxy = request.meta.get("proxy")
         if proxy and urlparse_cached(request).scheme == "https":
             proxy_parsed = urlparse(add_http_if_no_scheme(proxy))
-            proxy_port = proxy_parsed.port or (443 if proxy_parsed.scheme == "https" else 80)
             if proxy_parsed.scheme == "https":
                 raise NotImplementedError(
                     "HTTPS proxies for HTTPS destinations are not supported "
                     "on this Scrapy version"
                 )
+            proxy_port = proxy_parsed.port or 80
             bindaddress = normalize_bind_address(
                 request.meta.get("bindaddress") or self._bindAddress
             )
