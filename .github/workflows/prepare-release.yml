@@ -1,5 +1,4 @@
 # Bump the version manifests, move CHANGELOG Unreleased, and open a release PR.
-# Does not merge and does not publish.
 
 name: Prepare release
 
@@ -23,11 +22,12 @@ defaults:
 
 jobs:
   prepare:
+    name: Prepare release
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
-      contents: write
-      pull-requests: write
+      contents: write # push the release branch
+      pull-requests: write # open the release pull request
     steps:
       - name: Require the main branch
         run: |
@@ -54,7 +54,7 @@ jobs:
           RELEASE_SPEC: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          version="$(python scripts/release_tools.py prepare \
+          version="$(python scripts/release_version.py prepare \
             --spec "$RELEASE_SPEC" \
             --notes-file "$RUNNER_TEMP/notes.md")"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
@@ -70,13 +70,15 @@ jobs:
             exit 1
           fi
 
-      - name: Build sdist and wheel
+      - name: Check version and build
+        env:
+          VERSION: ${{ steps.prep.outputs.version }}
         run: |
           set -euo pipefail
+          python scripts/release_version.py check --version "$VERSION"
           python -m pip install --upgrade pip
-          python -m pip install build twine
+          python -m pip install build
           python -m build
-          twine check dist/*
 
       - name: Open the release pull request
         env:
