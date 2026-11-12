@@ -4,57 +4,54 @@ name: Tests
 
 on:
   pull_request:
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
   compat:
-    name: py${{ matrix.python }} / scrapy ${{ matrix.scrapy }}
+    name: py${{ matrix.python }} / ${{ matrix.name }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.13"]
-        scrapy: ["2.17.0", "2.19.0", "latest", "master"]
-        exclude:
-          # Scrapy master requires Python >= 3.11.
+        include:
           - python: "3.10"
-            scrapy: master
+            name: "2.17.0"
+            pip: "Scrapy==2.17.0"
+          - python: "3.13"
+            name: "2.19.0"
+            pip: "Scrapy==2.19.0"
+          - python: "3.13"
+            name: latest
+            pip: "Scrapy"
+          - python: "3.13"
+            name: master
+            pip: "--upgrade --force-reinstall git+https://github.com/scrapy/scrapy@master"
 
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python }}
 
       - name: Install and test
-        env:
-          SCRAPY: ${{ matrix.scrapy }}
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-          case "$SCRAPY" in
-            2.17.0) pip install "Scrapy==2.17.0" ;;
-            2.19.0) pip install "Scrapy==2.19.0" ;;
-            latest) pip install --upgrade Scrapy ;;
-            master)
-              # Master shares PyPI's version string, so a plain install is skipped.
-              pip install --upgrade --force-reinstall "git+https://github.com/scrapy/scrapy@master"
-              ;;
-            *) echo "Unknown Scrapy: $SCRAPY"; exit 1 ;;
-          esac
-          case "$SCRAPY" in
-            master) export EXPECT_PROXY_HEADERS_MODE=native ;;
-            latest) export EXPECT_PROXY_HEADERS_MODE=any ;;
-            *) export EXPECT_PROXY_HEADERS_MODE=legacy ;;
-          esac
-          python -c 'import scrapy, scrapy_proxy_headers as s; print(scrapy.__version__, s.PROXY_HEADERS_MODE)'
+          pip install ${{ matrix.pip }}
+          if [ "${{ matrix.name }}" = "master" ]; then
+            python -c "import scrapy_proxy_headers.native"
+          fi
           pytest -q
-          python test_header_safety.py

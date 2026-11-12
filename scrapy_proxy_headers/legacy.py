@@ -17,15 +17,40 @@ from scrapy.core.downloader.handlers.http11 import (
 )
 from scrapy.http import Headers, Response
 from scrapy.utils._download_handlers import normalize_bind_address
+from scrapy.utils.defer import maybe_deferred_to_future
 from scrapy.utils.httpobj import urlparse_cached
+from scrapy.utils.python import to_bytes
 from scrapy.utils.url import add_http_if_no_scheme
 
 from .connect import (
     merge_proxy_response_headers,
     normalize_proxy_headers,
     parse_connect_response_headers,
-    tunnel_request_data_with_headers,
 )
+from .download_handler import ProxyHeadersHandlerBase
+
+
+def tunnel_request_data_with_headers(
+    host: str, port: int, **proxy_headers: Any
+) -> bytes:
+    r"""Return the bytes of a CONNECT request.
+
+    >>> from scrapy.utils.python import to_unicode as s
+    >>> s(tunnel_request_data_with_headers("example.com", 8080))
+    'CONNECT example.com:8080 HTTP/1.1\r\nHost: example.com:8080\r\n\r\n'
+    >>> s(tunnel_request_data_with_headers("example.com", 8080, **{"X-ProxyMesh-Country": "US"}))
+    'CONNECT example.com:8080 HTTP/1.1\r\nHost: example.com:8080\r\nX-ProxyMesh-Country: US\r\n\r\n'
+    >>> s(tunnel_request_data_with_headers(b"example.com", "8090"))
+    'CONNECT example.com:8090 HTTP/1.1\r\nHost: example.com:8090\r\n\r\n'
+    """
+    host_value = to_bytes(host, encoding="ascii") + b":" + to_bytes(str(port))
+    request = b"CONNECT " + host_value + b" HTTP/1.1\r\nHost: " + host_value + b"\r\n"
+    for key, val in proxy_headers.items():
+        key_b, val_b = to_bytes(key), to_bytes(val)
+        if b"\r" in key_b or b"\n" in key_b or b"\r" in val_b or b"\n" in val_b:
+            raise ValueError("proxy header contains CR or LF")
+        request += key_b + b": " + val_b + b"\r\n"
+    return request + b"\r\n"
 
 
 class TunnelingHeadersTCP4ClientEndpoint(_TunnelingTCP4ClientEndpoint):
@@ -179,3 +204,28 @@ class ScrapyProxyHeadersAgent(_ScrapyAgent):
             self.proxy_response_headers = agent._endpoint._proxy_response_headers
             merge_proxy_response_headers(response, self.proxy_response_headers)
         return response
+
+
+class HTTP11ProxyDownloadHandler(ProxyHeadersHandlerBase):
+    """Send ``proxy_headers`` on CONNECT and merge the proxy response."""
+
+    async def download_request(self, request: Any, spider: Any = None) -> Response:
+        if spider is None:
+            spider = self._crawler.spider
+        agent = ScrapyProxyHeadersAgent(
+            contextFactory=self._contextFactory,
+            pool=self._pool,
+            maxsize=getattr(spider, "download_maxsize", self._default_maxsize),
+            warnsize=getattr(spider, "download_warnsize", self._default_warnsize),
+            fail_on_dataloss=self._fail_on_dataloss,
+            crawler=self._crawler,
+            bindAddress=self._bind_address,
+            tls_verbose_logging=self._tls_verbose_logging,
+        )
+        deferred = agent.download_request(request)
+        deferred.addCallback(
+            lambda response: self._apply_cached_headers(
+                response, request, agent.proxy_response_headers
+            )
+        )
+        return await maybe_deferred_to_future(deferred)

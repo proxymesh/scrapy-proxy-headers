@@ -153,9 +153,9 @@ Scrapy 2.20.0+ / native proxy_headers
 
 Scrapy 2.20.0 (released 2026-11-06) is the first release with native ``request.meta["proxy_headers"]`` support (`#3329`_, `#7888`_). It sends those headers to the proxy in ``request.meta["proxy"]``, including on the HTTPS CONNECT request. Scrapy 2.20.0 requires Python 3.11+.
 
-scrapy-proxy-headers 0.3.0 detects that support from Scrapy's features. On Scrapy 2.20.0 and newer, including master, ``PROXY_HEADERS_MODE`` is ``native``: Scrapy sends ``proxy_headers``, and this package does not send them again. It only copies the proxy's CONNECT response headers, such as ``X-ProxyMesh-IP``, onto ``response.headers``. On Scrapy 2.17.0 through 2.19.x the mode is ``legacy`` and this package still writes ``proxy_headers`` on CONNECT itself.
+On Scrapy 2.20.0 and newer, Scrapy sends ``proxy_headers`` and this package does not send them again. It only copies the proxy's CONNECT response headers, such as ``X-ProxyMesh-IP``, onto ``response.headers``. On Scrapy 2.17.0 through 2.19.x this package still writes ``proxy_headers`` on CONNECT.
 
-Projects on Scrapy 2.20.0 and newer that only need to *send* those headers can remove the ``DOWNLOAD_HANDLERS`` override and keep the same meta value. Spiders that read ``X-ProxyMesh-IP`` (or any other CONNECT response header) from ``response.headers`` should keep ``scrapy_proxy_headers.HTTP11ProxyDownloadHandler``. ``PROXY_HEADERS_MODE`` is detected from the installed Scrapy. It is not a setting.
+Projects on Scrapy 2.20.0 and newer that only need to *send* those headers can remove the ``DOWNLOAD_HANDLERS`` override and keep the same meta value. Spiders that read ``X-ProxyMesh-IP`` (or any other CONNECT response header) from ``response.headers`` should keep ``scrapy_proxy_headers.HTTP11ProxyDownloadHandler``.
 
 .. _#3329: https://github.com/scrapy/scrapy/issues/3329
 .. _#7888: https://github.com/scrapy/scrapy/pull/7888
@@ -263,7 +263,7 @@ Builds the binary content of a CONNECT request with custom headers.
 
 .. code-block:: python
 
-   from scrapy_proxy_headers.connect import tunnel_request_data_with_headers
+   from scrapy_proxy_headers.legacy import tunnel_request_data_with_headers
    
    # Basic CONNECT request
    data = tunnel_request_data_with_headers("example.com", 8080)

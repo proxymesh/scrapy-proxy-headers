@@ -9,7 +9,7 @@
 project = 'Scrapy Proxy Headers'
 copyright = '2025, ProxyMesh'
 author = 'ProxyMesh'
-release = '0.3.0'
+release = '0.2.2'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

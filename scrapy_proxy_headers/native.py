@@ -1,25 +1,29 @@
 """Capture CONNECT response headers on Scrapy 2.20 and newer.
 
-Scrapy sends ``request.meta["proxy_headers"]`` and then discards the proxy's
-CONNECT response. Replacing ``http11._TunnelProtocol`` records those headers.
-``_TunnelFactory.buildProtocol`` looks the class up on the module when it
-runs, so Scrapy's own ``connectionMade`` still writes the CONNECT request.
+Scrapy sends ``proxy_headers`` and discards the proxy response. A subclass of
+``_TunnelProtocol`` keeps those headers. The factory looks the class up on the
+module when a tunnel opens, so Scrapy still writes the CONNECT request.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from urllib.parse import urlparse
 
 from scrapy.core.downloader.handlers import http11
 from scrapy.core.downloader.handlers.http11 import _TunnelProtocol
-from scrapy.http import Headers
+from scrapy.http import Headers, Response
 from scrapy.utils._download_handlers import get_proxy_headers
-from scrapy.utils.url import add_http_if_no_scheme
+from w3lib.url import add_http_if_no_scheme
 
-from .connect import parse_connect_response_headers
+from .connect import merge_proxy_response_headers, parse_connect_response_headers
+from .download_handler import ProxyHeadersHandlerBase
+
+logger = logging.getLogger(__name__)
 
 _CAPTURED: dict[tuple[Any, ...], Headers] = {}
+_installed = False
 
 
 class _CapturingTunnelProtocol(_TunnelProtocol):
@@ -40,20 +44,13 @@ class _CapturingTunnelProtocol(_TunnelProtocol):
         if not separator:
             return
         self._captured = True
-        headers = parse_connect_response_headers(header_block)
         _CAPTURED[
-            _capture_key(self._proxyHost, self._proxyPort, self._proxyHeaders)
-        ] = headers
-
-
-http11._TunnelProtocol = _CapturingTunnelProtocol
+            _request_key(self._proxyHost, self._proxyPort, self._proxyHeaders)
+        ] = parse_connect_response_headers(header_block)
 
 
 def sent_proxy_headers(request: Any) -> tuple[tuple[str, str], ...]:
-    """Return the header tuple Scrapy passes to ``_TunnelProtocol``.
-
-    ``proxy_headers`` wins when it already contains ``Proxy-Authorization``.
-    """
+    """Return the header tuple Scrapy passes to ``_TunnelProtocol``."""
     headers = tuple(get_proxy_headers(request))
     auth = request.headers.get(b"Proxy-Authorization")
     if auth and not any(name == "Proxy-Authorization" for name, _value in headers):
@@ -62,16 +59,38 @@ def sent_proxy_headers(request: Any) -> tuple[tuple[str, str], ...]:
     return headers
 
 
-def lookup_connect_response_headers(request: Any) -> Headers | None:
-    """Return CONNECT response headers captured for *request*, if any."""
+def _request_key(host: Any, port: Any, headers: Any) -> tuple[Any, ...]:
+    return (str(host).lower(), int(port), tuple(headers))
+
+
+def _lookup(request: Any) -> Headers | None:
     proxy = request.meta.get("proxy")
     if not proxy:
         return None
     parsed = urlparse(add_http_if_no_scheme(proxy))
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    key = _capture_key(parsed.hostname or "", port, sent_proxy_headers(request))
-    return _CAPTURED.get(key)
+    return _CAPTURED.get(
+        _request_key(parsed.hostname or "", port, sent_proxy_headers(request))
+    )
 
 
-def _capture_key(host: Any, port: Any, headers: Any) -> tuple[Any, ...]:
-    return (str(host).lower(), int(port), tuple(headers))
+class HTTP11ProxyDownloadHandler(ProxyHeadersHandlerBase):
+    """Copy Scrapy's CONNECT response headers onto the download response."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        global _installed
+        if not _installed:
+            http11._TunnelProtocol = _CapturingTunnelProtocol
+            _installed = True
+
+    async def download_request(self, request: Any, spider: Any = None) -> Response:
+        response = await super().download_request(request)
+        captured = _lookup(request)
+        if captured:
+            merge_proxy_response_headers(response, captured)
+        elif request.meta.get("proxy"):
+            logger.warning(
+                "No CONNECT response headers captured for %s", request.meta["proxy"]
+            )
+        return response

@@ -123,7 +123,7 @@ class _TargetHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, format: str, *args: Any) -> None:
+    def log_message(self, *_args: Any) -> None:
         return
 
 

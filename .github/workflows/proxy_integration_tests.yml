@@ -32,7 +32,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run header safety unit tests
-        run: python test_header_safety.py
+        run: pytest tests/test_header_safety.py
 
       - name: Require PROXY_URL Actions secret
         env:

@@ -112,7 +112,7 @@ class ProxyHeadersSpider(scrapy.Spider):
 
 ## Scrapy 2.20.0+ / native proxy_headers
 
-Scrapy 2.20.0 (2026-11-06) is the first release with native `request.meta["proxy_headers"]` (`#3329`, `#7888`). It requires Python 3.11+. scrapy-proxy-headers 0.3.0 detects that support by feature, not version. On 2.20.0 and newer, `PROXY_HEADERS_MODE` is `native`: Scrapy sends the headers, and this package only copies CONNECT response headers such as `X-ProxyMesh-IP` onto `response.headers`. Header-only users can omit `DOWNLOAD_HANDLERS`. On 2.17.0 through 2.19.x the mode is `legacy` and this package still writes the CONNECT headers. `PROXY_HEADERS_MODE` is detected, not a Scrapy setting. `X-ProxyMesh-Country` is only honored by some ProxyMesh proxies; see https://docs.proxymesh.com/. Use `http://user:pass@proxy.example.com:31280` in examples. Do not put a real proxy host or real credentials in docs or tests.
+Scrapy 2.20.0 (2026-11-06) is the first release with native `request.meta["proxy_headers"]` (`#3329`, `#7888`). It requires Python 3.11+. On 2.20.0 and newer, Scrapy sends the headers and this package only copies CONNECT response headers such as `X-ProxyMesh-IP` onto `response.headers`. Header-only users can omit `DOWNLOAD_HANDLERS`. On 2.17.0 through 2.19.x this package still writes the CONNECT headers. `X-ProxyMesh-Country` is only honored by some ProxyMesh proxies; see https://docs.proxymesh.com/. Use `http://user:pass@proxy.example.com:31280` in examples. Do not put a real proxy host or real credentials in docs or tests.
 
 ## Proxy Headers
 

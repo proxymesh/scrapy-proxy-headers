@@ -97,7 +97,7 @@ def parse(self, response):
 
 Scrapy 2.20.0 (released 2026-11-06) is the first release with native `request.meta["proxy_headers"]` support ([#3329](https://github.com/scrapy/scrapy/issues/3329), [#7888](https://github.com/scrapy/scrapy/pull/7888)). It sends those headers to the proxy in `request.meta["proxy"]`, including on the HTTPS CONNECT request. Scrapy 2.20.0 requires Python 3.11 or newer.
 
-scrapy-proxy-headers 0.3.0 detects that support from Scrapy's features, not from the version string. On Scrapy 2.20.0 and newer, including master, `PROXY_HEADERS_MODE` is `"native"`: Scrapy sends `proxy_headers`, and this package does not send them again. It only copies the proxy's CONNECT response headers, such as `X-ProxyMesh-IP`, onto `response.headers`. On Scrapy 2.17.0 through 2.19.x the mode is `"legacy"` and this package still writes `proxy_headers` on CONNECT itself.
+On Scrapy 2.20.0 and newer, Scrapy sends `proxy_headers` and this package does not send them again. It only copies the proxy's CONNECT response headers, such as `X-ProxyMesh-IP`, onto `response.headers`. On Scrapy 2.17.0 through 2.19.x this package still writes `proxy_headers` on CONNECT.
 
 Header-only users on Scrapy 2.20.0 and newer can drop the `DOWNLOAD_HANDLERS` override and keep the same meta value:
 
@@ -119,13 +119,7 @@ DOWNLOAD_HANDLERS = {
 }
 ```
 
-`scrapy_proxy_headers.PROXY_HEADERS_MODE` is `"native"` or `"legacy"`. It is detected from the installed Scrapy. It is not a Scrapy setting. In native mode the captured CONNECT response is merged into the Scrapy response even when Scrapy reuses the tunnel.
-
-```python
-import scrapy_proxy_headers
-
-print(scrapy_proxy_headers.PROXY_HEADERS_MODE)
-```
+On Scrapy 2.20+, the captured CONNECT response is merged into the Scrapy response even when Scrapy reuses the tunnel.
 
 ## Complete Example
 
@@ -167,9 +161,9 @@ class ProxyHeadersSpider(scrapy.Spider):
 
 ## How It Works
 
-1. **HTTP11ProxyDownloadHandler** - Custom download handler that manages proxy header caching
-2. **Legacy path** (`PROXY_HEADERS_MODE == "legacy"`) - `ScrapyProxyHeadersAgent` reads `proxy_headers` and `TunnelingHeadersAgent` sends them on CONNECT
-3. **Native path** (`PROXY_HEADERS_MODE == "native"`) - Scrapy sends `proxy_headers`; the handler only records the CONNECT response
+1. **HTTP11ProxyDownloadHandler** - Download handler that caches proxy response headers
+2. **Scrapy 2.17–2.19** - `ScrapyProxyHeadersAgent` reads `proxy_headers` and `TunnelingHeadersAgent` sends them on CONNECT
+3. **Scrapy 2.20+** - Scrapy sends `proxy_headers`; the handler only records the CONNECT response
 
 On the legacy path, `TunnelingHeadersTCP4ClientEndpoint` captures proxy response headers from the CONNECT response. On the native path, a subclass of Scrapy's tunnel protocol does that capture.
 
