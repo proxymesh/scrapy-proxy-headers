@@ -17,7 +17,7 @@ The version in `pyproject.toml` is 0.3.0. The release date is chosen when this i
 - Remove the Scrapy `<2.20` cap added in 0.2.2. Require Scrapy >=2.17.0 with no upper cap.
 - Require Python 3.10 or newer, matching Scrapy 2.17.0. Scrapy 2.20.0 and master require Python 3.11+.
 - Document `async def start()`. Scrapy 2.16 removed `start_requests()`.
-- Document that `X-ProxyMesh-Country` applies to the ProxyMesh World and Open proxies, not to a single-country proxy such as `us.proxymesh.com`.
+- Document that `X-ProxyMesh-Country` is only honored by some ProxyMesh proxies. See https://docs.proxymesh.com/.
 
 ## [0.2.2] - 2026-11-09
 

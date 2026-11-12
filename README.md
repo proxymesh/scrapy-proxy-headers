@@ -66,7 +66,7 @@ class MySpider(scrapy.Spider):
         yield scrapy.Request(
             url="https://api.ipify.org?format=json",
             meta={
-                "proxy": "http://world.proxymesh.com:31280",
+                "proxy": "http://user:pass@proxy.example.com:31280",
                 "proxy_headers": {"X-ProxyMesh-Country": "US"}
             }
         )
@@ -79,7 +79,7 @@ class MySpider(scrapy.Spider):
 
 Use `async def start()`. Scrapy 2.16 removed `start_requests()`, so a spider that only defines `start_requests()` sends no requests on every Scrapy version this package supports (2.17 and newer).
 
-`X-ProxyMesh-Country` selects a country on the ProxyMesh World proxy (`world.proxymesh.com`) and the Open proxy (`open.proxymesh.com`). It does not apply to a single-country proxy such as `us.proxymesh.com`.
+`X-ProxyMesh-Country` is only honored by some ProxyMesh proxies. See the [ProxyMesh docs](https://docs.proxymesh.com/).
 
 ### 3. Receive Proxy Response Headers
 
@@ -105,7 +105,7 @@ Header-only users on Scrapy 2.20.0 and newer can drop the `DOWNLOAD_HANDLERS` ov
 yield scrapy.Request(
     url="https://api.ipify.org?format=json",
     meta={
-        "proxy": "http://world.proxymesh.com:31280",
+        "proxy": "http://user:pass@proxy.example.com:31280",
         "proxy_headers": {"X-ProxyMesh-Country": "US"},
     },
 )
@@ -145,7 +145,7 @@ class ProxyHeadersSpider(scrapy.Spider):
         yield scrapy.Request(
             url="https://api.ipify.org?format=json",
             meta={
-                "proxy": "http://world.proxymesh.com:31280",
+                "proxy": "http://user:pass@proxy.example.com:31280",
                 "proxy_headers": {"X-ProxyMesh-Country": "US"}
             },
             callback=self.parse_ip

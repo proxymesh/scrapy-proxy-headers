@@ -86,7 +86,7 @@ def test_native_sent_headers_match_scrapy() -> None:
         "https://example.com/",
         headers={"Proxy-Authorization": "Basic dTpw"},
         meta={
-            "proxy": "http://world.proxymesh.com:31280",
+            "proxy": "http://user:pass@proxy.example.com:31280",
             "proxy_headers": {"X-ProxyMesh-Country": "US"},
         },
     )
