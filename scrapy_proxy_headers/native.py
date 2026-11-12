@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import weakref
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 
 from scrapy.core.downloader.handlers import http11
 from scrapy.core.downloader.handlers.http11 import _TunnelProtocol
@@ -102,5 +102,15 @@ class HTTP11ProxyDownloadHandler(ProxyHeadersHandlerBase):
             and proxy_cache_key(proxy, request.meta.get("proxy_headers"))
             not in self._proxy_response_headers_cache
         ):
-            logger.warning("No CONNECT response headers captured for %s", proxy)
+            location = urlsplit(add_http_if_no_scheme(proxy))
+            host = location.hostname or ""
+            if ":" in host:
+                host = f"[{host}]"
+            if location.port:
+                host = f"{host}:{location.port}"
+            logger.warning(
+                "No CONNECT response headers captured for %s://%s",
+                location.scheme,
+                host,
+            )
         return response

@@ -7,7 +7,7 @@
 - On Scrapy 2.20.0 and newer, let Scrapy send `request.meta["proxy_headers"]` and copy the proxy's CONNECT response headers, such as `X-ProxyMesh-IP`, onto the Scrapy response.
 - Cache CONNECT response headers by proxy URL and normalized `proxy_headers`, so a different header set does not reuse another set's `X-ProxyMesh-IP`.
 - On Scrapy 2.17 through 2.19, open a separate CONNECT tunnel for each `proxy_headers` set. Those releases otherwise pool tunnels by proxy host, port, and auth only.
-- Local tests that run a CONNECT proxy and an HTTPS target. CI checks Scrapy 2.17.0, 2.19.0, the latest PyPI release, and Scrapy master on Python 3.10 and 3.13.
+- Local tests that run a CONNECT proxy and an HTTPS target. CI checks Python 3.10 with Scrapy 2.17.0, and Python 3.13 with Scrapy 2.19.0, the latest PyPI release, and Scrapy master.
 
 ### Changed
 
