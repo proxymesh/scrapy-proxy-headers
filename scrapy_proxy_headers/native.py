@@ -8,6 +8,7 @@ module when a tunnel opens, so Scrapy still writes the CONNECT request.
 from __future__ import annotations
 
 import logging
+import weakref
 from typing import Any
 from urllib.parse import urlparse
 
@@ -15,14 +16,15 @@ from scrapy.core.downloader.handlers import http11
 from scrapy.core.downloader.handlers.http11 import _TunnelProtocol
 from scrapy.http import Headers, Response
 from scrapy.utils._download_handlers import get_proxy_headers
+from scrapy.utils.httpobj import urlparse_cached
 from w3lib.url import add_http_if_no_scheme
 
-from .connect import merge_proxy_response_headers, parse_connect_response_headers
+from .connect import parse_connect_response_headers, proxy_cache_key
 from .download_handler import ProxyHeadersHandlerBase
 
 logger = logging.getLogger(__name__)
 
-_CAPTURED: dict[tuple[Any, ...], Headers] = {}
+_handler: HTTP11ProxyDownloadHandler | None = None
 _installed = False
 
 
@@ -31,22 +33,20 @@ class _CapturingTunnelProtocol(_TunnelProtocol):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self._captured = False
+        self._response_headers: Headers | None = None
+        if _handler is not None:
+            _handler._tunnels.add(self)
 
     def dataReceived(self, data: bytes) -> None:
         was_ready = self._tunnelReady
         super().dataReceived(data)
-        if was_ready or self._captured or not self._tunnelReady:
+        if was_ready or self._response_headers is not None or not self._tunnelReady:
             return
         header_block, separator, _rest = bytes(self._connectBuffer).partition(
             b"\r\n\r\n"
         )
-        if not separator:
-            return
-        self._captured = True
-        _CAPTURED[
-            _request_key(self._proxyHost, self._proxyPort, self._proxyHeaders)
-        ] = parse_connect_response_headers(header_block)
+        if separator:
+            self._response_headers = parse_connect_response_headers(header_block)
 
 
 def sent_proxy_headers(request: Any) -> tuple[tuple[str, str], ...]:
@@ -59,38 +59,48 @@ def sent_proxy_headers(request: Any) -> tuple[tuple[str, str], ...]:
     return headers
 
 
-def _request_key(host: Any, port: Any, headers: Any) -> tuple[Any, ...]:
-    return (str(host).lower(), int(port), tuple(headers))
-
-
-def _lookup(request: Any) -> Headers | None:
-    proxy = request.meta.get("proxy")
-    if not proxy:
-        return None
-    parsed = urlparse(add_http_if_no_scheme(proxy))
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    return _CAPTURED.get(
-        _request_key(parsed.hostname or "", port, sent_proxy_headers(request))
-    )
-
-
 class HTTP11ProxyDownloadHandler(ProxyHeadersHandlerBase):
     """Copy Scrapy's CONNECT response headers onto the download response."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        global _installed
+        self._tunnels: weakref.WeakSet[_CapturingTunnelProtocol] = weakref.WeakSet()
+        global _handler, _installed
+        _handler = self
         if not _installed:
             http11._TunnelProtocol = _CapturingTunnelProtocol
             _installed = True
 
-    async def download_request(self, request: Any, spider: Any = None) -> Response:
+    def _connect_headers(self, request: Any) -> Headers | None:
+        proxy = request.meta.get("proxy")
+        if not proxy:
+            return None
+        parsed = urlparse(add_http_if_no_scheme(proxy))
+        host = (parsed.hostname or "").lower()
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        sent = sent_proxy_headers(request)
+        for protocol in self._tunnels:
+            if protocol._response_headers is None:
+                continue
+            if (
+                str(protocol._proxyHost).lower() == host
+                and int(protocol._proxyPort) == port
+                and tuple(protocol._proxyHeaders) == sent
+            ):
+                return protocol._response_headers
+        return None
+
+    async def download_request(self, request: Any) -> Response:
         response = await super().download_request(request)
-        captured = _lookup(request)
-        if captured:
-            merge_proxy_response_headers(response, captured)
-        elif request.meta.get("proxy"):
-            logger.warning(
-                "No CONNECT response headers captured for %s", request.meta["proxy"]
-            )
+        response = self._apply_cached_headers(
+            response, request, self._connect_headers(request)
+        )
+        proxy = request.meta.get("proxy")
+        if (
+            proxy
+            and urlparse_cached(request).scheme == "https"
+            and proxy_cache_key(proxy, request.meta.get("proxy_headers"))
+            not in self._proxy_response_headers_cache
+        ):
+            logger.warning("No CONNECT response headers captured for %s", proxy)
         return response

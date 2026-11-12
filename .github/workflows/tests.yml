@@ -46,12 +46,15 @@ jobs:
           python-version: ${{ matrix.python }}
 
       - name: Install and test
+        env:
+          MATRIX_PIP: ${{ matrix.pip }}
+          MATRIX_NAME: ${{ matrix.name }}
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-          pip install ${{ matrix.pip }}
-          if [ "${{ matrix.name }}" = "master" ]; then
+          pip install $MATRIX_PIP
+          if [ "$MATRIX_NAME" = "master" ]; then
             python -c "import scrapy_proxy_headers.native"
           fi
           pytest -q
