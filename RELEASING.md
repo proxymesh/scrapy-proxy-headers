@@ -33,20 +33,19 @@ Don't make Release check a required check: release PRs are opened with GITHUB_TO
 
 ### Publish
 
-A push to `main` runs `.github/workflows/publish.yml`. The **lookup** job reads the pull request for that commit (`merged_at` set, base `main`, same repository, head `release/X.Y.Z`). Any other push leaves the version output empty. The **publish** job then builds the package and uploads it to PyPI with trusted publishing (OIDC) in the GitHub environment `release`. A version that is already on PyPI fails the upload. The **github-release** job runs `gh release view vX.Y.Z` or creates that release on `$GITHUB_SHA` with title `vX.Y.Z`. The notes are the changelog section.
+A push to `main` runs `.github/workflows/publish.yml`. The **lookup** job reads the pull request for that commit (`merged_at` set, base `main`, same repository, head `release/X.Y.Z`). Any other push leaves the version output empty. The **publish** job then builds the package and uploads it to PyPI with trusted publishing (OIDC). A version that is already on PyPI fails the upload. The **github-release** job runs `gh release view vX.Y.Z` or creates that release on `$GITHUB_SHA` with title `vX.Y.Z`. The notes are the changelog section.
 
 ## One-time owner setup
 
 Do this before the next `release/*` merge. This change does not edit repository or PyPI settings.
 
-1. Create a GitHub environment named `release` (Settings → Environments). Optional: required reviewers. It is used only when lookup finds a release merge.
-2. On PyPI, add a trusted publisher for scrapy-proxy-headers:
+1. On PyPI, add a trusted publisher for scrapy-proxy-headers:
    - Owner: `proxymesh`
    - Repository: `scrapy-proxy-headers`
    - Workflow: `publish.yml`
-   - Environment: `release`
-3. Allow GitHub Actions to create pull requests (Settings → Actions → General → Workflow permissions). Dependabot auto-merge already needs that.
-4. After the first release through `release` succeeds, delete the old `pypi` and `testpypi` environments, and delete any PyPI token secret stored on the repository or those environments.
+   - Environment: leave blank
+2. Allow GitHub Actions to create pull requests (Settings → Actions → General → Workflow permissions). Dependabot auto-merge already needs that.
+3. After the first successful trusted publish, delete the old `pypi` and `testpypi` GitHub environments if they still exist, and delete any PyPI token secret stored on the repository.
 
 ## Tags
 
