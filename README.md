@@ -190,4 +190,5 @@ BSD License - see [LICENSE](LICENSE) for details.
 - [PyPI](https://pypi.org/project/scrapy-proxy-headers/)
 - [Documentation](https://scrapy-proxy-headers.readthedocs.io/)
 - [GitHub](https://github.com/proxymesh/scrapy-proxy-headers)
+- [Releasing](RELEASING.md)
 - [ProxyMesh](https://proxymesh.com)

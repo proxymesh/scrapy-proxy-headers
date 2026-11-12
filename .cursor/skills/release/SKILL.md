@@ -1,10 +1,11 @@
 ---
 name: release
 description: >-
-  Prepares a version bump in pyproject.toml, opens a PR from branch release/VERSION
-  toward main with auto-merge, and coordinates with CI that publishes a GitHub Release
-  when that branch merges. Use when the user invokes /release, /release VERSION, asks
-  for a release PR, version bump, or release automation.
+  Prepares a version bump and changelog entry, opens a PR from branch
+  release/VERSION toward main, and leaves the merge to a person. CI publishes
+  to PyPI and creates the GitHub Release when that branch merges. Use when
+  the user invokes /release, /release VERSION, asks for a release PR, version
+  bump, or release automation.
 ---
 
 # Release (`/release` and optional VERSION)
@@ -12,20 +13,24 @@ description: >-
 ## When this applies
 
 - User message starts with **`/release`** or **`/release VERSION`** (VERSION optional).
-- User asks to cut a release, bump the package version, or open a release PR with auto-merge.
+- User asks to cut a release, bump the package version, or open a release PR.
+
+Do not publish, tag, or merge. See `RELEASING.md` for the owner setup and what CI does after merge.
 
 ## Preconditions
 
 - Working tree clean (`git status`); stash or commit unrelated work first.
 - `gh` CLI authenticated (`gh auth status`).
 - Remote `origin` is GitHub.
-- Repository allows **auto-merge** (Settings → General → Pull Requests → Allow auto-merge). If auto-merge is unavailable, open the PR anyway and tell the user to merge manually after checks pass.
+- Do not enable auto-merge on the release PR.
 
 ## Version selection
 
-1. Read the current version from `pyproject.toml` under `[project]` → `version` (PEP 440 / semver `MAJOR.MINOR.PATCH`).
-2. If **VERSION was provided**: set the new version to that string (must match `^\d+\.\d+\.\d+` unless the project already uses a different scheme—then follow existing `pyproject.toml` format).
-3. If **VERSION was omitted**: bump the **patch** segment only (e.g. `0.2.1` → `0.2.2`). If the current value is not `x.y.z`, stop and ask the user for an explicit VERSION.
+1. Read the current version from `pyproject.toml` under `[project]` → `version`.
+2. If **VERSION was provided**: pass that string as `--spec` (`X.Y.Z`).
+3. If **VERSION was omitted**: pass `--spec patch`.
+
+`docs/conf.py` `release` is the other version manifest. `scripts/release_tools.py` updates both, and moves `CHANGELOG.md` `## [Unreleased]` (or `## Unreleased`) to `## [X.Y.Z] - YYYY-MM-DD`.
 
 ## Git identity (this repo)
 
@@ -38,53 +43,44 @@ git config user.name "Cursor"
 
 ## Steps
 
-1. **Sync main**
+1. **Start from `origin/main`** without committing on `main`:
 
    ```bash
    git fetch origin main
+   git switch --detach origin/main
    ```
 
-2. **Compute** `NEW_VERSION` (per rules above). **Branch name** is `release/${NEW_VERSION}` (no `v` prefix in the branch name).
-
-3. **Create branch from latest main**
+2. **Prepare the tree.** `SPEC` is the provided VERSION, or `patch`.
 
    ```bash
-   git checkout -B "release/${NEW_VERSION}" origin/main
+   NEW_VERSION="$(python scripts/release_tools.py prepare \
+     --spec "${SPEC}" --notes-file /tmp/release-notes.md)"
    ```
 
-4. **Edit** `pyproject.toml`: set `version = "NEW_VERSION"` in `[project]`.
-
-5. **Commit and push** (never push to `main`; push only the release branch)
+3. **Branch, commit, and push** (never push to `main`):
 
    ```bash
-   git add pyproject.toml
-   git commit -m "chore: bump version to ${NEW_VERSION}"
-   git push -u origin "release/${NEW_VERSION}"
+   git switch -c "release/${NEW_VERSION}"
+   git add pyproject.toml docs/conf.py CHANGELOG.md
+   git commit -m "chore: prepare release ${NEW_VERSION}"
+   git push -u origin "HEAD:release/${NEW_VERSION}"
    ```
 
-6. **Open PR** into `main` with a short body (no Cursor boilerplate). Example:
+4. **Open the PR** into `main`. Do not run `gh pr merge` and do not pass `--auto`.
 
    ```bash
    gh pr create --base main --head "release/${NEW_VERSION}" \
      --title "Release ${NEW_VERSION}" \
-     --body "Bumps the package version to ${NEW_VERSION} for release."
+     --body-file /tmp/release-notes.md
    ```
 
-7. **Enable auto-merge** after the PR exists. In non-interactive mode, `gh` requires an explicit merge strategy with `--auto` (use the repository default: usually **`--merge`** for a merge commit, or **`--squash`** / **`--rebase`** if that is what the repo uses).
+5. **Stop.** A person merges after **Release check** is green. Merging runs **Publish to PyPI**, which publishes with trusted publishing and creates tag `v${NEW_VERSION}` plus a GitHub Release.
 
-   ```bash
-   gh pr merge <PR_NUMBER_OR_URL> --auto --merge
-   ```
-
-   If `--auto` fails (permissions, auto-merge disabled, or pending checks), leave the PR open and report the error; the user can merge manually after CI passes. You can poll with `gh pr checks <PR_NUMBER_OR_URL> --watch` then retry `gh pr merge ... --auto --merge`, or merge manually.
-
-## After merge
-
-Merging the PR into `main` runs **Release on merge** (`.github/workflows/github_release_on_release_branch_merge.yml`), which creates a **GitHub Release** for tag `v{version}` from the merge commit. Because releases created with the default `GITHUB_TOKEN` do not trigger other workflows, **Publish to PyPI** (`publish.yml`) is also started via **`workflow_run`** when that release workflow finishes. Manual or API-created releases still match the `release: published` trigger on `publish.yml`.
+The Actions workflow **Prepare release** does steps 2–4 when someone runs it from `main`. Prefer that workflow when a person is cutting the release. Use the commands above when you are doing it from this checkout.
 
 ## Quick reference
 
-| Input              | Result                                      |
-|--------------------|---------------------------------------------|
-| `/release`         | Patch bump, branch `release/x.y.(z+1)`      |
-| `/release 1.4.0`   | Version `1.4.0`, branch `release/1.4.0`     |
+| Input              | `--spec`   | Branch                         |
+|--------------------|------------|--------------------------------|
+| `/release`         | `patch`    | `release/` plus the new patch  |
+| `/release 1.4.0`   | `1.4.0`    | `release/1.4.0`                |
