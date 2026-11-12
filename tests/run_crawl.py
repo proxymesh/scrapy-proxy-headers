@@ -128,7 +128,6 @@ def _run(plan: dict[str, Any]) -> int:
     spider = spider_holder.get("spider")
     payload = {
         "mode": scrapy_proxy_headers.PROXY_HEADERS_MODE,
-        "detection": scrapy_proxy_headers.detection_details(),
         "results": [] if spider is None else spider.results,
     }
     print("RESULT " + json.dumps(payload))

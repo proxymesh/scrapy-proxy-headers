@@ -9,10 +9,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-import scrapy
-import scrapy.core.downloader.handlers.http11 as http11
-
 import scrapy_proxy_headers
 from scrapy_proxy_headers.connect import (
     normalize_proxy_headers,
@@ -20,7 +16,6 @@ from scrapy_proxy_headers.connect import (
     proxy_cache_key,
     tunnel_request_data_with_headers,
 )
-from scrapy_proxy_headers.compat import ScrapyInternalsError
 from tests.harness import (
     read_proxy_log,
     start_connect_proxy,
@@ -35,17 +30,8 @@ def _expected_mode() -> str:
     try:
         from scrapy.utils._download_handlers import get_proxy_headers
     except ImportError:
-        get_proxy_headers = None  # type: ignore[assignment]
-    has_helper = callable(get_proxy_headers)
-    has_protocol = hasattr(http11, "_TunnelProtocol")
-    has_legacy = hasattr(http11, "TunnelingTCP4ClientEndpoint") or hasattr(
-        http11, "_TunnelingTCP4ClientEndpoint"
-    )
-    if has_helper and has_protocol:
-        return "native"
-    if has_legacy:
         return "legacy"
-    raise AssertionError("Scrapy tunnel implementation was not recognized")
+    return "native" if callable(get_proxy_headers) else "legacy"
 
 
 def _values(headers: dict[str, list[str]], name: str) -> list[str]:
@@ -61,16 +47,11 @@ def test_ci_expected_mode() -> None:
     expected = os.environ.get("EXPECT_PROXY_HEADERS_MODE", "")
     if not expected or expected == "any":
         return
-    assert scrapy_proxy_headers.PROXY_HEADERS_MODE == expected, (
-        scrapy_proxy_headers.detection_details()
-    )
+    assert scrapy_proxy_headers.PROXY_HEADERS_MODE == expected
 
 
 def test_detected_mode_matches_scrapy_features() -> None:
     assert scrapy_proxy_headers.PROXY_HEADERS_MODE == _expected_mode()
-    details = scrapy_proxy_headers.detection_details()
-    assert details["mode"] == _expected_mode()
-    assert details["scrapy_version"] == scrapy.__version__
 
 
 def test_native_sent_headers_match_scrapy() -> None:
@@ -80,7 +61,7 @@ def test_native_sent_headers_match_scrapy() -> None:
     from scrapy.http import Request
     from scrapy.utils._download_handlers import get_proxy_headers
 
-    from scrapy_proxy_headers.compat import _sent_proxy_headers
+    from scrapy_proxy_headers.native import sent_proxy_headers
 
     request = Request(
         "https://example.com/",
@@ -92,7 +73,7 @@ def test_native_sent_headers_match_scrapy() -> None:
     )
     sent = get_proxy_headers(request)
     assert not any(name == "Proxy-Authorization" for name, _value in sent)
-    assert _sent_proxy_headers(request) == (
+    assert sent_proxy_headers(request) == (
         ("Proxy-Authorization", "Basic dTpw"),
         *sent,
     )
@@ -101,17 +82,18 @@ def test_native_sent_headers_match_scrapy() -> None:
         "Proxy-Authorization": "from-meta",
         "X-ProxyMesh-Country": "US",
     }
-    assert _sent_proxy_headers(request) == get_proxy_headers(request)
+    assert sent_proxy_headers(request) == get_proxy_headers(request)
 
 
-def test_legacy_symbols_follow_the_detected_mode() -> None:
+def test_active_mode_module_imports() -> None:
     if _expected_mode() == "legacy":
-        from scrapy_proxy_headers.agent import ScrapyProxyHeadersAgent
+        from scrapy_proxy_headers.legacy import ScrapyProxyHeadersAgent
 
         assert ScrapyProxyHeadersAgent.__name__ == "ScrapyProxyHeadersAgent"
         return
-    with pytest.raises(ScrapyInternalsError):
-        from scrapy_proxy_headers.agent import ScrapyProxyHeadersAgent
+    from scrapy_proxy_headers.native import lookup_connect_response_headers
+
+    assert callable(lookup_connect_response_headers)
 
 
 def test_proxy_cache_key_includes_normalized_headers() -> None:

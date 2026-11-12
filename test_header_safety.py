@@ -5,12 +5,12 @@ import unittest
 
 from scrapy.http import Headers, Response
 
-from scrapy_proxy_headers.agent import (
-    PROXY_HEADERS_MODE,
-    _merge_proxy_headers,
+from scrapy_proxy_headers import PROXY_HEADERS_MODE
+from scrapy_proxy_headers.connect import (
+    merge_proxy_response_headers,
+    parse_connect_response_headers,
     tunnel_request_data_with_headers,
 )
-from scrapy_proxy_headers.connect import parse_connect_response_headers
 
 
 class ConnectHeaderTests(unittest.TestCase):
@@ -57,7 +57,7 @@ class ConnectHeaderTests(unittest.TestCase):
             },
             body=b"ok",
         )
-        _merge_proxy_headers(
+        merge_proxy_response_headers(
             response,
             Headers(
                 {
@@ -72,7 +72,7 @@ class ConnectHeaderTests(unittest.TestCase):
         self.assertEqual(response.headers.get(b"X-ProxyMesh-IP"), b"203.0.113.9")
 
     def _assert_legacy_endpoint_reassembles(self) -> None:
-        from scrapy_proxy_headers.agent import TunnelingHeadersTCP4ClientEndpoint
+        from scrapy_proxy_headers.legacy import TunnelingHeadersTCP4ClientEndpoint
 
         endpoint = self._endpoint(TunnelingHeadersTCP4ClientEndpoint)
         endpoint.processProxyResponse(

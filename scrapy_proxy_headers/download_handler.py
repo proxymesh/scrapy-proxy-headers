@@ -9,91 +9,69 @@ from scrapy.core.downloader.handlers.http11 import HTTP11DownloadHandler
 from scrapy.http import Request, Response
 from scrapy.utils.defer import maybe_deferred_to_future
 
-from .compat import (
-    NATIVE,
-    PROXY_HEADERS_MODE,
-    legacy_classes,
-    lookup_connect_response_headers,
-)
 from .connect import merge_proxy_response_headers, proxy_cache_key
+from .mode import PROXY_HEADERS_MODE
 
 logger = logging.getLogger(__name__)
 
+if PROXY_HEADERS_MODE == "native":
+    from .native import lookup_connect_response_headers
+else:
+    try:
+        from .legacy import ScrapyProxyHeadersAgent
+    except ImportError as exc:
+        raise ImportError(
+            "This Scrapy has neither native proxy_headers support nor the "
+            "2.17–2.19 tunnel classes (_TunnelingTCP4ClientEndpoint)."
+        ) from exc
+
 
 class HTTP11ProxyDownloadHandler(HTTP11DownloadHandler):
-    """HTTPS handler that merges CONNECT response headers into the response.
+    """Merge CONNECT response headers into the Scrapy response.
 
-    Public configuration is unchanged::
+    Configure it with::
 
         DOWNLOAD_HANDLERS = {
             "https": "scrapy_proxy_headers.HTTP11ProxyDownloadHandler",
         }
 
-    Send headers to the proxy with ``request.meta["proxy_headers"]``.
-    Headers from the proxy's CONNECT response, such as ``X-ProxyMesh-IP``,
-    are copied onto ``response.headers``.
-
-    When :data:`~scrapy_proxy_headers.PROXY_HEADERS_MODE` is ``native``,
-    Scrapy already sends ``proxy_headers``. This handler does not send them
-    again. It records the CONNECT response by wrapping Scrapy's tunnel
-    protocol and applies those headers, including after the tunnel is reused.
-
-    When the mode is ``legacy`` (Scrapy 2.17.0 through 2.19.x), this handler
-    sends ``proxy_headers`` on CONNECT itself.
-
-    Cached CONNECT response headers are keyed by proxy URL and the normalized
-    ``proxy_headers`` mapping, so two header sets for one proxy do not share
-    a cached ``X-ProxyMesh-IP``.
+    ``request.meta["proxy_headers"]`` is sent on CONNECT. On Scrapy 2.20+
+    Scrapy sends those headers and this handler only copies the proxy's
+    response, including ``X-ProxyMesh-IP``. On Scrapy 2.17–2.19 this handler
+    sends them. The cache key is the proxy URL plus the normalized headers,
+    so two header sets do not share one ``X-ProxyMesh-IP``.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._proxy_response_headers_cache: dict[tuple[Any, ...], Any] = {}
-        logger.info(
-            "scrapy-proxy-headers using %s Scrapy proxy_headers support",
-            PROXY_HEADERS_MODE,
-        )
+        logger.info("scrapy-proxy-headers mode: %s", PROXY_HEADERS_MODE)
 
     async def download_request(self, request: Request, spider: Any = None) -> Response:
-        """Download *request* and merge CONNECT proxy headers into the response."""
-        if PROXY_HEADERS_MODE == NATIVE:
-            return await self._download_request_native(request)
-        return await self._download_request_legacy(request, spider)
+        """Download *request* and merge captured CONNECT headers onto it."""
+        if PROXY_HEADERS_MODE == "native":
+            response = await super().download_request(request)
+            captured = lookup_connect_response_headers(request)
+            return self._apply_cached_headers(response, request, captured)
 
-    async def _download_request_native(self, request: Request) -> Response:
-        response = await super().download_request(request)
-        captured = lookup_connect_response_headers(request)
-        return self._apply_cached_headers(response, request, captured)
-
-    async def _download_request_legacy(self, request: Request, spider: Any = None) -> Response:
-        # Scrapy 2.17+ calls download_request(request). spider is accepted so
-        # an engine that still passes it keeps working.
         if spider is None:
             spider = self._crawler.spider
-
-        agent_kwargs: dict[str, Any] = {
-            "contextFactory": self._contextFactory,
-            "pool": self._pool,
-            "maxsize": getattr(spider, "download_maxsize", self._default_maxsize),
-            "warnsize": getattr(spider, "download_warnsize", self._default_warnsize),
-            "fail_on_dataloss": self._fail_on_dataloss,
-            "crawler": self._crawler,
-        }
-        bind_address = getattr(self, "_bind_address", None)
-        if bind_address is not None:
-            agent_kwargs["bindAddress"] = bind_address
-        tls_verbose = getattr(self, "_tls_verbose_logging", None)
-        if tls_verbose is not None:
-            agent_kwargs["tls_verbose_logging"] = tls_verbose
-
-        agent_cls = legacy_classes()["ScrapyProxyHeadersAgent"]
-        agent = agent_cls(**agent_kwargs)
+        agent = ScrapyProxyHeadersAgent(
+            contextFactory=self._contextFactory,
+            pool=self._pool,
+            maxsize=getattr(spider, "download_maxsize", self._default_maxsize),
+            warnsize=getattr(spider, "download_warnsize", self._default_warnsize),
+            fail_on_dataloss=self._fail_on_dataloss,
+            crawler=self._crawler,
+            bindAddress=self._bind_address,
+            tls_verbose_logging=self._tls_verbose_logging,
+        )
         deferred = agent.download_request(request)
-
-        def callback(response: Response) -> Response:
-            return self._apply_cached_headers(response, request, agent.proxy_response_headers)
-
-        deferred.addCallback(callback)
+        deferred.addCallback(
+            lambda response: self._apply_cached_headers(
+                response, request, agent.proxy_response_headers
+            )
+        )
         return await maybe_deferred_to_future(deferred)
 
     def _apply_cached_headers(
@@ -111,9 +89,6 @@ class HTTP11ProxyDownloadHandler(HTTP11DownloadHandler):
         cached = self._proxy_response_headers_cache.get(key)
         if cached:
             merge_proxy_response_headers(response, cached)
-        elif PROXY_HEADERS_MODE == NATIVE:
-            logger.warning(
-                "No CONNECT response headers captured for proxy %s",
-                proxy,
-            )
+        elif PROXY_HEADERS_MODE == "native":
+            logger.warning("No CONNECT response headers captured for proxy %s", proxy)
         return response

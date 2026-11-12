@@ -55,6 +55,6 @@ jobs:
             latest) export EXPECT_PROXY_HEADERS_MODE=any ;;
             *) export EXPECT_PROXY_HEADERS_MODE=legacy ;;
           esac
-          python -c 'import scrapy, scrapy_proxy_headers as s; print(scrapy.__version__, s.detection_details())'
+          python -c 'import scrapy, scrapy_proxy_headers as s; print(scrapy.__version__, s.PROXY_HEADERS_MODE)'
           pytest -q
           python test_header_safety.py

@@ -7,7 +7,7 @@ The version in `pyproject.toml` is 0.3.0. The release date is chosen when this i
 ### Added
 
 - On Scrapy 2.20.0 and newer, detect native `request.meta["proxy_headers"]` support and let Scrapy send those CONNECT headers. This package does not send them again. It copies the proxy's CONNECT response headers, such as `X-ProxyMesh-IP`, onto the Scrapy response.
-- `scrapy_proxy_headers.PROXY_HEADERS_MODE` is `native` or `legacy`, chosen from Scrapy's features rather than the version string. `detection_details()` shows the signals used. It is not a Scrapy setting.
+- `scrapy_proxy_headers.PROXY_HEADERS_MODE` is `native` when Scrapy provides `get_proxy_headers`, and `legacy` otherwise. It is not a Scrapy setting.
 - Cache CONNECT response headers by proxy URL and normalized `proxy_headers`, so a different header set does not reuse another set's `X-ProxyMesh-IP`.
 - On Scrapy 2.17 through 2.19, open a separate CONNECT tunnel for each `proxy_headers` set. Those releases otherwise pool tunnels by proxy host, port, and auth only.
 - Local tests that run a CONNECT proxy and an HTTPS target. CI checks Scrapy 2.17.0, 2.19.0, the latest PyPI release, and Scrapy master on Python 3.10 and 3.13.

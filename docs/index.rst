@@ -193,21 +193,17 @@ The handler:
 ScrapyProxyHeadersAgent
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Extends ``scrapy.core.downloader.handlers.http11.ScrapyAgent`` to use our custom tunneling agent for HTTPS requests through proxies.
+Extends ``_ScrapyAgent`` on Scrapy 2.17–2.19 and builds ``TunnelingHeadersAgent`` for HTTPS requests through a proxy.
 
 .. code-block:: python
 
-   from scrapy_proxy_headers.agent import ScrapyProxyHeadersAgent
+   from scrapy_proxy_headers.legacy import ScrapyProxyHeadersAgent
 
 The agent:
 
 1. Checks if the request has both a ``proxy`` and ``proxy_headers`` in its meta
 2. For HTTPS requests, configures the tunneling agent with the custom proxy headers
 3. After the response body is received, merges any proxy response headers into the response
-
-**Class Attributes:**
-
-* ``_TunnelingAgent`` - Set to ``TunnelingHeadersAgent`` to use our custom tunneling implementation
 
 **Methods:**
 
@@ -217,11 +213,11 @@ The agent:
 TunnelingHeadersAgent
 ~~~~~~~~~~~~~~~~~~~~~
 
-Extends ``scrapy.core.downloader.handlers.http11.TunnelingAgent`` to support custom proxy headers in HTTPS tunnel establishment.
+Extends ``_TunnelingAgent`` so each ``proxy_headers`` set opens its own CONNECT tunnel.
 
 .. code-block:: python
 
-   from scrapy_proxy_headers.agent import TunnelingHeadersAgent
+   from scrapy_proxy_headers.legacy import TunnelingHeadersAgent
 
 The agent maintains proxy headers and creates endpoints that include them in the CONNECT request.
 
@@ -233,11 +229,11 @@ The agent maintains proxy headers and creates endpoints that include them in the
 TunnelingHeadersTCP4ClientEndpoint
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Extends ``scrapy.core.downloader.handlers.http11.TunnelingTCP4ClientEndpoint`` to include custom headers in the CONNECT request and capture proxy response headers.
+Extends ``_TunnelingTCP4ClientEndpoint`` to include custom headers in the CONNECT request and capture proxy response headers.
 
 .. code-block:: python
 
-   from scrapy_proxy_headers.agent import TunnelingHeadersTCP4ClientEndpoint
+   from scrapy_proxy_headers.legacy import TunnelingHeadersTCP4ClientEndpoint
 
 This is the lowest-level class that actually handles the tunnel establishment.
 
@@ -267,7 +263,7 @@ Builds the binary content of a CONNECT request with custom headers.
 
 .. code-block:: python
 
-   from scrapy_proxy_headers.agent import tunnel_request_data_with_headers
+   from scrapy_proxy_headers.connect import tunnel_request_data_with_headers
    
    # Basic CONNECT request
    data = tunnel_request_data_with_headers("example.com", 8080)
