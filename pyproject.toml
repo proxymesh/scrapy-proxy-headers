@@ -46,3 +46,7 @@ include = ["scrapy_proxy_headers*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff.lint]
+# Pre-0.16 default set; widen in follow-up PRs (PLC0415, T201).
+select = ["E4", "E7", "E9", "F"]
