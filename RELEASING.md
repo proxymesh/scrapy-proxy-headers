@@ -39,11 +39,12 @@ A push to `main` runs `.github/workflows/publish.yml`. The **lookup** job reads 
 
 Do this before the next `release/*` merge. This change does not edit repository or PyPI settings.
 
-1. On PyPI, add a trusted publisher for scrapy-proxy-headers:
+1. On PyPI, confirm the existing trusted publisher for scrapy-proxy-headers has:
    - Owner: `proxymesh`
    - Repository: `scrapy-proxy-headers`
    - Workflow: `publish.yml`
-   - Environment: leave blank
+   - Environment: blank
+   If Environment is set (for example `pypi`), edit it to blank.
 2. Allow GitHub Actions to create pull requests (Settings → Actions → General → Workflow permissions). Dependabot auto-merge already needs that.
 3. After the first successful trusted publish, delete the old `pypi` and `testpypi` GitHub environments if they still exist, and delete any PyPI token secret stored on the repository.
 
