@@ -64,6 +64,9 @@ jobs:
     if: needs.lookup.outputs.version != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    environment:
+      name: pypi
+      url: https://pypi.org/p/scrapy-proxy-headers
     permissions:
       contents: read # checkout the release commit
       id-token: write # PyPI trusted publishing

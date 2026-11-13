@@ -33,20 +33,11 @@ Don't make Release check a required check: release PRs are opened with GITHUB_TO
 
 ### Publish
 
-A push to `main` runs `.github/workflows/publish.yml`. The **lookup** job reads the pull request for that commit (`merged_at` set, base `main`, same repository, head `release/X.Y.Z`). Any other push leaves the version output empty. The **publish** job then builds the package and uploads it to PyPI with trusted publishing (OIDC). A version that is already on PyPI fails the upload. The **github-release** job runs `gh release view vX.Y.Z` or creates that release on `$GITHUB_SHA` with title `vX.Y.Z`. The notes are the changelog section.
+A push to `main` runs `.github/workflows/publish.yml`. The **lookup** job reads the pull request for that commit (`merged_at` set, base `main`, same repository, head `release/X.Y.Z`). Any other push leaves the version output empty. The **publish** job then builds the package and uploads it to PyPI through the existing trusted publisher and the GitHub `pypi` environment, unchanged from today. A version that is already on PyPI fails the upload. The **github-release** job runs `gh release view vX.Y.Z` or creates that release on `$GITHUB_SHA` with title `vX.Y.Z`. The notes are the changelog section.
 
 ## One-time owner setup
 
-Do this before the next `release/*` merge. This change does not edit repository or PyPI settings.
-
-1. On PyPI, confirm the existing trusted publisher for scrapy-proxy-headers has:
-   - Owner: `proxymesh`
-   - Repository: `scrapy-proxy-headers`
-   - Workflow: `publish.yml`
-   - Environment: blank
-   If Environment is set (for example `pypi`), edit it to blank.
-2. Allow GitHub Actions to create pull requests (Settings → Actions → General → Workflow permissions). Dependabot auto-merge already needs that.
-3. After the first successful trusted publish, delete the old `pypi` and `testpypi` GitHub environments if they still exist, and delete any PyPI token secret stored on the repository.
+1. Allow GitHub Actions to create pull requests (Settings → Actions → General → Workflow permissions). Dependabot auto-merge already needs that.
 
 ## Tags
 
