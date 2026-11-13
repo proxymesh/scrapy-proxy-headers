@@ -24,8 +24,6 @@ import argparse
 # Scrapy imports
 import scrapy
 from scrapy.crawler import CrawlerProcess
-from scrapy.utils.project import get_project_settings
-
 
 class ProxyHeaderTestSpider(scrapy.Spider):
     """Spider that tests proxy header functionality."""

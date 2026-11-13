@@ -2,6 +2,8 @@
 # under Settings → Secrets and variables → Actions, then mark this workflow as a required
 # status check under branch protection (pull_request events only receive secrets for PRs
 # from the same repository, not from forks).
+# - lint: scripts/lint.sh
+# Runners are ubuntu-24.04. Do not switch these jobs to ubuntu-latest.
 
 name: Proxy integration tests
 
@@ -48,3 +50,18 @@ jobs:
         env:
           PROXY_URL: ${{ secrets.PROXY_URL }}
         run: python test_proxy_headers.py
+
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install lint tools
+        run: bash scripts/install-lint-tools.sh
+
+      - name: Lint
+        run: scripts/lint.sh
