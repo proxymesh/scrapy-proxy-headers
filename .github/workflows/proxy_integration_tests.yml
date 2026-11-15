@@ -34,6 +34,14 @@ jobs:
           pip install -e .
           pip install -r requirements.txt
 
+      - name: Build and check the package
+        run: |
+          pip install build twine
+          python -m build
+          twine check dist/*
+          pip install --no-deps --force-reinstall dist/*.whl
+          cd "${RUNNER_TEMP}" && python -c 'import scrapy_proxy_headers'
+
       - name: Run header safety unit tests
         run: python test_header_safety.py
 
