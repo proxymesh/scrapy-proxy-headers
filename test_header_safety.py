@@ -72,7 +72,7 @@ class ConnectHeaderTests(unittest.TestCase):
         self.assertEqual(response.headers.get(b"X-ProxyMesh-IP"), b"203.0.113.9")
 
     def _assert_legacy_endpoint_reassembles(self) -> None:
-        from scrapy_proxy_headers.legacy import TunnelingHeadersTCP4ClientEndpoint
+        from scrapy_proxy_headers.legacy import TunnelingHeadersTCP4ClientEndpoint  # noqa: PLC0415
 
         endpoint = self._endpoint(TunnelingHeadersTCP4ClientEndpoint)
         endpoint.processProxyResponse(
