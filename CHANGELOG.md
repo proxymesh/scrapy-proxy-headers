@@ -1,8 +1,6 @@
 # Changelog
 
-## Unreleased
-
-The version in `pyproject.toml` is 0.3.0. The release date is chosen when this is published.
+## [0.3.0] - 2026-11-16
 
 ### Added
 
