@@ -25,11 +25,12 @@ import argparse
 import scrapy
 from scrapy.crawler import CrawlerProcess
 
+
 class ProxyHeaderTestSpider(scrapy.Spider):
     """Spider that tests proxy header functionality."""
-    
+
     name = "proxy_header_test"
-    
+
     custom_settings = {
         "DOWNLOAD_HANDLERS": {
             "https": "scrapy_proxy_headers.HTTP11ProxyDownloadHandler"
@@ -40,9 +41,18 @@ class ProxyHeaderTestSpider(scrapy.Spider):
         "LOG_LEVEL": "WARNING",
         "REQUEST_FINGERPRINTER_IMPLEMENTATION": "2.7",
     }
-    
-    def __init__(self, proxy_url, test_url, proxy_header, 
-                 send_header=None, send_value=None, verbose=False, *args, **kwargs):
+
+    def __init__(
+        self,
+        proxy_url,
+        test_url,
+        proxy_header,
+        send_header=None,
+        send_value=None,
+        verbose=False,
+        *args,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.proxy_url = proxy_url
         self.test_url = test_url
@@ -68,29 +78,38 @@ class ProxyHeaderTestSpider(scrapy.Spider):
     async def start(self):
         """Scrapy 2.16 removed start_requests(); supported releases call start()."""
         yield self._start_request()
-    
+
     def parse(self, response):
         # Check for the expected proxy header
         header_value = response.headers.get(self.proxy_header.encode())
-        
+
         if header_value:
             self.test_passed = True
-            self.header_value = header_value.decode() if isinstance(header_value, bytes) else header_value
+            self.header_value = (
+                header_value.decode()
+                if isinstance(header_value, bytes)
+                else header_value
+            )
         else:
             self.test_passed = False
             self.error_message = f"Header '{self.proxy_header}' not found in response"
-    
+
     def handle_error(self, failure):
         self.test_passed = False
         self.error_message = str(failure.value)
 
 
-def run_test(proxy_url: str, test_url: str, proxy_header: str,
-             send_header: str = None, send_value: str = None,
-             verbose: bool = False) -> bool:
+def run_test(
+    proxy_url: str,
+    test_url: str,
+    proxy_header: str,
+    send_header: str = None,
+    send_value: str = None,
+    verbose: bool = False,
+) -> bool:
     """
     Run the proxy header test.
-    
+
     Returns True if test passed, False otherwise.
     """
     # Print test configuration
@@ -99,27 +118,29 @@ def run_test(proxy_url: str, test_url: str, proxy_header: str,
     print(f"Proxy URL: {proxy_url}")
     print(f"Test URL: {test_url}")
     print(f"Checking for header: {proxy_header}")
-    
+
     if send_header and send_value:
         print(f"Sending header: {send_header}: {send_value}")
-    
+
     print()
-    
+
     # Create and run the spider
-    process = CrawlerProcess(settings={
-        "LOG_ENABLED": False,
-    })
-    
+    process = CrawlerProcess(
+        settings={
+            "LOG_ENABLED": False,
+        }
+    )
+
     # Store spider instance to check results
     spider_instance = None
-    
+
     def store_spider(spider):
         nonlocal spider_instance
         spider_instance = spider
-    
+
     crawler = process.create_crawler(ProxyHeaderTestSpider)
     crawler.signals.connect(store_spider, signal=scrapy.signals.spider_opened)
-    
+
     process.crawl(
         crawler,
         proxy_url=proxy_url,
@@ -127,19 +148,21 @@ def run_test(proxy_url: str, test_url: str, proxy_header: str,
         proxy_header=proxy_header,
         send_header=send_header,
         send_value=send_value,
-        verbose=verbose
+        verbose=verbose,
     )
-    
+
     process.start()
-    
+
     # Check results
     if spider_instance is None:
         print("[FAIL] Spider did not start")
         return False
-    
+
     if spider_instance.test_passed:
         if verbose and spider_instance.header_value:
-            print(f"[PASS] Received header {proxy_header}: {spider_instance.header_value}")
+            print(
+                f"[PASS] Received header {proxy_header}: {spider_instance.header_value}"
+            )
         else:
             print(f"[PASS] Received header {proxy_header}")
         return True
@@ -157,23 +180,21 @@ def main():
         description="Test proxy header functionality with scrapy-proxy-headers"
     )
     parser.add_argument(
-        "-v", "--verbose",
-        action="store_true",
-        help="Show header values in output"
+        "-v", "--verbose", action="store_true", help="Show header values in output"
     )
     args = parser.parse_args()
-    
+
     # Get configuration from environment
     proxy_url = os.environ.get("PROXY_URL") or os.environ.get("HTTPS_PROXY")
     if not proxy_url:
         print("Error: PROXY_URL or HTTPS_PROXY environment variable required")
         sys.exit(1)
-    
+
     test_url = os.environ.get("TEST_URL", "https://api.ipify.org?format=json")
     proxy_header = os.environ.get("PROXY_HEADER", "X-ProxyMesh-IP")
     send_header = os.environ.get("SEND_PROXY_HEADER")
     send_value = os.environ.get("SEND_PROXY_VALUE")
-    
+
     # Run the test
     success = run_test(
         proxy_url=proxy_url,
@@ -181,9 +202,9 @@ def main():
         proxy_header=proxy_header,
         send_header=send_header,
         send_value=send_value,
-        verbose=args.verbose
+        verbose=args.verbose,
     )
-    
+
     sys.exit(0 if success else 1)
 
 

@@ -1,7 +1,5 @@
 # Agent instructions
 
-Read `.cursorrules` too (git identity, PR footer rule).
-
 ## Checks (run before every push)
 
 - `scripts/lint.sh` must pass. CI runs the same command. Tools come from
@@ -28,7 +26,7 @@ Read `.cursorrules` too (git identity, PR footer rule).
 ## Code standards
 
 - Follow PEP 8, the Google Python Style Guide, and the Google Shell Style
-  Guide (see `.cursorrules`). Run the repo linters and fix everything.
+  Guide. Run the repo linters and fix everything.
 - Imports at the top of the module. No imports inside functions, methods
   or class bodies. A guarded try/except ImportError at module top is fine
   where versions truly differ.
@@ -75,7 +73,7 @@ Read `.cursorrules` too (git identity, PR footer rule).
 | Scoped permissions, no dangerous triggers | zizmor in `scripts/lint.sh` |
 | No `${{ }}` in `run:` | zizmor in `scripts/lint.sh` |
 | Shell scripts pass shellcheck and shfmt | `scripts/lint.sh` (style: review) |
-| Python passes ruff | `ruff check` in `scripts/lint.sh` |
+| Python passes ruff | `ruff check` and `ruff format --check` in `scripts/lint.sh` |
 | Imports at module top, no print | review (PLC0415, T201 planned) |
 | Actions pinned to full SHAs | zizmor; SHA comment: review |
 | Focused PRs under ~400 lines, no version bumps | review |

@@ -21,9 +21,7 @@ pip install scrapy-proxy-headers
 Add the download handler in `settings.py`:
 
 ```python
-DOWNLOAD_HANDLERS = {
-    "https": "scrapy_proxy_headers.HTTP11ProxyDownloadHandler"
-}
+DOWNLOAD_HANDLERS = {"https": "scrapy_proxy_headers.HTTP11ProxyDownloadHandler"}
 ```
 
 Or in spider's `custom_settings`:
@@ -44,18 +42,19 @@ Use `request.meta["proxy_headers"]`:
 ```python
 import scrapy
 
+
 class MySpider(scrapy.Spider):
     name = "example"
-    
+
     async def start(self):
         yield scrapy.Request(
             url="https://api.ipify.org?format=json",
             meta={
                 "proxy": "http://user:pass@proxy.example.com:31280",
-                "proxy_headers": {"X-ProxyMesh-Country": "US"}
-            }
+                "proxy_headers": {"X-ProxyMesh-Country": "US"},
+            },
         )
-    
+
     def parse(self, response):
         proxy_ip = response.headers.get("X-ProxyMesh-IP")
         self.logger.info(f"Proxy IP: {proxy_ip}")
@@ -81,32 +80,33 @@ Note: Headers are bytes in Scrapy; decode with `.decode()`.
 ```python
 import scrapy
 
+
 class ProxyHeadersSpider(scrapy.Spider):
     name = "proxy_headers_demo"
-    
+
     custom_settings = {
         "DOWNLOAD_HANDLERS": {
             "https": "scrapy_proxy_headers.HTTP11ProxyDownloadHandler"
         }
     }
-    
+
     async def start(self):
         yield scrapy.Request(
             url="https://api.ipify.org?format=json",
             meta={
                 "proxy": "http://user:pass@proxy.example.com:31280",
-                "proxy_headers": {"X-ProxyMesh-Country": "US"}
+                "proxy_headers": {"X-ProxyMesh-Country": "US"},
             },
-            callback=self.parse_ip
+            callback=self.parse_ip,
         )
-    
+
     def parse_ip(self, response):
         data = response.json()
         proxy_ip = response.headers.get(b"X-ProxyMesh-IP")
-        
+
         yield {
             "public_ip": data["ip"],
-            "proxy_ip": proxy_ip.decode() if proxy_ip else None
+            "proxy_ip": proxy_ip.decode() if proxy_ip else None,
         }
 ```
 

@@ -46,6 +46,7 @@ main() {
   check shfmt shfmt -d -i 2 -ci "${sh_files[@]}"
   check version scripts/check-version.sh
   check ruff ruff check
+  check ruff-format ruff format --check
 
   if ((${#failed[@]} > 0)); then
     err "lint failed: ${failed[*]}"

@@ -36,10 +36,7 @@ class ConnectHeaderTests(unittest.TestCase):
             self._assert_legacy_endpoint_reassembles()
             return
         buf = b""
-        buf += (
-            b"HTTP/1.1 200 Connection established\r\n"
-            b"X-ProxyMesh-IP: 203.0.113.9\r\n"
-        )
+        buf += b"HTTP/1.1 200 Connection established\r\nX-ProxyMesh-IP: 203.0.113.9\r\n"
         self.assertNotIn(b"\r\n\r\n", buf)
         buf += b"X-ProxyMesh-Country: US\r\n\r\nX-Injected: from-body\r\n"
         header_block = buf.split(b"\r\n\r\n", 1)[0]
@@ -76,15 +73,12 @@ class ConnectHeaderTests(unittest.TestCase):
 
         endpoint = self._endpoint(TunnelingHeadersTCP4ClientEndpoint)
         endpoint.processProxyResponse(
-            b"HTTP/1.1 200 Connection established\r\n"
-            b"X-ProxyMesh-IP: 203.0.113.9\r\n"
+            b"HTTP/1.1 200 Connection established\r\nX-ProxyMesh-IP: 203.0.113.9\r\n"
         )
         self.assertFalse(hasattr(endpoint, "_proxy_response_headers"))
 
         endpoint.processProxyResponse(
-            b"X-ProxyMesh-Country: US\r\n"
-            b"\r\n"
-            b"X-Injected: from-body\r\n"
+            b"X-ProxyMesh-Country: US\r\n\r\nX-Injected: from-body\r\n"
         )
         headers = endpoint._proxy_response_headers
         self.assertEqual(headers.get(b"X-ProxyMesh-IP"), b"203.0.113.9")
