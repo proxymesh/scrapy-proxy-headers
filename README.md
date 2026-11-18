@@ -242,7 +242,7 @@ The handler caches proxy response headers by proxy URL and the normalized `proxy
 
 ## Why ProxyMesh
 
-[ProxyMesh](https://proxymesh.com) provides rotating datacenter proxies with custom headers such as `X-ProxyMesh-Country` and `X-ProxyMesh-IP`. This package works with any proxy that supports custom CONNECT headers; it is maintained by ProxyMesh to make that workflow straightforward in Scrapy.
+[ProxyMesh](https://proxymesh.com) created this library to help customers use custom headers to control proxy behavior, as documented at [docs.proxymesh.com](https://docs.proxymesh.com/). It works with any proxy that supports custom headers on CONNECT.
 
 ## License
 
