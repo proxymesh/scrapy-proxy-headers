@@ -90,7 +90,7 @@ class MySpider(scrapy.Spider):
 
 Use `async def start()`. Scrapy 2.16 removed `start_requests()`, so a spider that only defines `start_requests()` sends no requests on every Scrapy version this package supports (2.17 and newer).
 
-`X-ProxyMesh-Country` is only honored by some ProxyMesh proxies. See the [ProxyMesh docs](https://docs.proxymesh.com/).
+`X-ProxyMesh-Country` is only honored by some ProxyMesh proxies. See the [X-ProxyMesh-Country header](https://docs.proxymesh.com/article/7-request-response-headers#x-proxymesh-country) docs.
 
 ### 3. Receive Proxy Response Headers
 
@@ -216,6 +216,8 @@ pytest
 ## Documentation
 
 Full documentation is available at [scrapy-proxy-headers.readthedocs.io](https://scrapy-proxy-headers.readthedocs.io/).
+
+For a complete spider that sends and reads proxy headers with ProxyMesh, see the [Scrapy proxy headers example](https://docs.proxymesh.com/article/4-python-proxy-configuration#Scrapy--send-and-read).
 
 ### How It Works
 
